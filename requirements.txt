@@ -14,5 +14,9 @@ Werkzeug==2.3.7
 # HTTP requests for microservice communication
 requests==2.31.0
 
+# Email and notifications
+secure-smtplib==0.1.1
+
 # Other utilities
 python-dotenv==1.0.0
+uuid==1.30

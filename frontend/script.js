@@ -1,16 +1,136 @@
 // Global variables
 let cart = [];
 let allProducts = [];
+let currentUser = null;
+let authToken = null;
+let currentOrderId = null;
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:5000';
+const API_SERVICES = {
+    product: 'http://localhost:5000',
+    user: 'http://localhost:5001',
+    order: 'http://localhost:5002',
+    payment: 'http://localhost:5003',
+    notification: 'http://localhost:5004'
+};
 
 // Initialize the application
 window.onload = function() {
+    checkLoginStatus();
     showSection('home');
     fetchProducts();
     updateCartDisplay();
 };
+
+// Authentication functions
+function checkLoginStatus() {
+    const savedUser = localStorage.getItem('currentUser');
+    const savedToken = localStorage.getItem('authToken');
+    
+    if (savedUser && savedToken) {
+        currentUser = JSON.parse(savedUser);
+        authToken = savedToken;
+        updateUIForLoggedInUser();
+    }
+}
+
+function updateUIForLoggedInUser() {
+    document.getElementById('user-greeting').textContent = `Hello, ${currentUser.first_name}!`;
+    document.getElementById('user-greeting').style.display = 'inline';
+    document.getElementById('login-link').style.display = 'none';
+    document.getElementById('register-link').style.display = 'none';
+    document.getElementById('logout-link').style.display = 'inline';
+    document.getElementById('orders-link').style.display = 'inline';
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('user-greeting').style.display = 'none';
+    document.getElementById('login-link').style.display = 'inline';
+    document.getElementById('register-link').style.display = 'inline';
+    document.getElementById('logout-link').style.display = 'none';
+    document.getElementById('orders-link').style.display = 'none';
+}
+
+async function register(event) {
+    event.preventDefault();
+    
+    const userData = {
+        username: document.getElementById('register-username').value,
+        email: document.getElementById('register-email').value,
+        password: document.getElementById('register-password').value,
+        first_name: document.getElementById('register-firstname').value,
+        last_name: document.getElementById('register-lastname').value
+    };
+    
+    try {
+        const response = await fetch(`${API_SERVICES.user}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification('Registration successful! Please login.');
+            showSection('login');
+            document.getElementById('register-form').reset();
+        } else {
+            showNotification(result.error || 'Registration failed', 'error');
+        }
+    } catch (error) {
+        showNotification('Network error during registration', 'error');
+    }
+}
+
+async function login(event) {
+    event.preventDefault();
+    
+    const loginData = {
+        username: document.getElementById('login-username').value,
+        password: document.getElementById('login-password').value
+    };
+    
+    try {
+        const response = await fetch(`${API_SERVICES.user}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(loginData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            currentUser = result.user;
+            authToken = result.token;
+            
+            // Store in localStorage
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            localStorage.setItem('authToken', authToken);
+            
+            updateUIForLoggedInUser();
+            showNotification(`Welcome back, ${currentUser.first_name}!`);
+            showSection('products');
+            document.getElementById('login-form').reset();
+        } else {
+            showNotification(result.error || 'Login failed', 'error');
+        }
+    } catch (error) {
+        showNotification('Network error during login', 'error');
+    }
+}
+
+function logout() {
+    currentUser = null;
+    authToken = null;
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('authToken');
+    updateUIForLoggedOutUser();
+    cart = [];
+    updateCartDisplay();
+    showNotification('Logged out successfully');
+    showSection('home');
+}
 
 // Navigation functions
 function showSection(sectionName) {
@@ -24,19 +144,20 @@ function showSection(sectionName) {
         targetSection.style.display = 'block';
     }
     
-    // Load products if products section is shown
+    // Load appropriate data
     if (sectionName === 'products') {
         fetchProducts();
-    }
-    
-    // Update cart display if cart section is shown
-    if (sectionName === 'cart') {
+    } else if (sectionName === 'cart') {
         displayCartItems();
+    } else if (sectionName === 'orders' && currentUser) {
+        fetchUserOrders();
+    } else if (sectionName === 'admin') {
+        loadAdminData();
     }
 }
 
-// Product-related functions
-function fetchProducts() {
+// Product functions (existing code enhanced)
+async function fetchProducts() {
     const loadingElement = document.getElementById('loading');
     const errorElement = document.getElementById('error-message');
     const productList = document.getElementById('product-list');
@@ -44,29 +165,22 @@ function fetchProducts() {
     if (loadingElement) loadingElement.style.display = 'block';
     if (errorElement) errorElement.style.display = 'none';
     
-    fetch(`${API_BASE_URL}/products`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(products => {
-            allProducts = products;
-            displayProducts(products);
-            if (loadingElement) loadingElement.style.display = 'none';
-        })
-        .catch(error => {
-            console.error('Error fetching products:', error);
-            if (loadingElement) loadingElement.style.display = 'none';
-            if (errorElement) {
-                errorElement.textContent = 'Failed to load products. Please try again later.';
-                errorElement.style.display = 'block';
-            }
-            if (productList) {
-                productList.innerHTML = '<p class="error">Could not load products. Please check if the server is running.</p>';
-            }
-        });
+    try {
+        const response = await fetch(`${API_SERVICES.product}/products`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const products = await response.json();
+        allProducts = products;
+        displayProducts(products);
+        if (loadingElement) loadingElement.style.display = 'none';
+    } catch (error) {
+        console.error('Error fetching products:', error);
+        if (loadingElement) loadingElement.style.display = 'none';
+        if (errorElement) {
+            errorElement.textContent = 'Failed to load products. Please try again later.';
+            errorElement.style.display = 'block';
+        }
+    }
 }
 
 function displayProducts(products) {
@@ -111,7 +225,7 @@ function searchProducts() {
     displayProducts(filteredProducts);
 }
 
-// Cart functions
+// Cart functions (enhanced)
 function addToCart(productId) {
     const product = allProducts.find(p => p.id === productId);
     if (!product || product.stock === 0) return;
@@ -121,7 +235,7 @@ function addToCart(productId) {
         if (existingItem.quantity < product.stock) {
             existingItem.quantity++;
         } else {
-            alert('Cannot add more items. Stock limit reached.');
+            showNotification('Cannot add more items. Stock limit reached.', 'error');
             return;
         }
     } else {
@@ -150,7 +264,7 @@ function updateQuantity(productId, newQuantity) {
             updateCartDisplay();
             displayCartItems();
         } else {
-            alert('Cannot exceed stock limit.');
+            showNotification('Cannot exceed stock limit.', 'error');
         }
     }
 }
@@ -201,61 +315,308 @@ function displayCartItems() {
     cartTotal.textContent = total.toFixed(2);
 }
 
-function checkout() {
-    if (cart.length === 0) {
-        alert('Your cart is empty!');
+// Enhanced checkout function that uses Order Service
+async function checkout() {
+    if (!currentUser) {
+        showNotification('Please login to place an order', 'error');
+        showSection('login');
         return;
     }
     
-    alert('Checkout functionality would be implemented here. Total: ₹' + 
-          cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2));
+    if (cart.length === 0) {
+        showNotification('Your cart is empty!', 'error');
+        return;
+    }
+    
+    const shippingAddress = document.getElementById('shipping-address').value.trim();
+    if (!shippingAddress) {
+        showNotification('Please enter shipping address', 'error');
+        return;
+    }
+    
+    try {
+        // Create order using Order Service
+        const orderData = {
+            user_id: currentUser.id,
+            items: cart.map(item => ({
+                product_id: item.id,
+                quantity: item.quantity
+            })),
+            shipping_address: shippingAddress
+        };
+        
+        const orderResponse = await fetch(`${API_SERVICES.order}/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        });
+        
+        if (!orderResponse.ok) {
+            const error = await orderResponse.json();
+            throw new Error(error.error || 'Order creation failed');
+        }
+        
+        const order = await orderResponse.json();
+        currentOrderId = order.id;
+        
+        showNotification('Order created successfully! Proceeding to payment...');
+        
+        // Show payment modal
+        document.getElementById('payment-amount').textContent = order.total_amount.toFixed(2);
+        document.getElementById('payment-modal').style.display = 'block';
+        
+    } catch (error) {
+        showNotification(`Order creation failed: ${error.message}`, 'error');
+    }
 }
 
-// Admin functions
-function addProduct(event) {
+// Payment processing function
+async function processPayment(event) {
     event.preventDefault();
     
-    const name = document.getElementById('product-name').value;
-    const description = document.getElementById('product-description').value;
-    const price = parseFloat(document.getElementById('product-price').value);
-    const stock = parseInt(document.getElementById('product-stock').value);
+    const paymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
+    const totalAmount = parseFloat(document.getElementById('payment-amount').textContent);
     
-    const productData = {
-        name: name,
-        description: description,
-        price: price,
-        stock: stock
+    const paymentData = {
+        order_id: currentOrderId,
+        user_id: currentUser.id,
+        amount: totalAmount,
+        payment_method: paymentMethod
     };
     
-    fetch(`${API_BASE_URL}/products`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(productData)
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to add product');
+    // Add card details if card payment
+    if (paymentMethod === 'card') {
+        paymentData.card_details = {
+            number: document.getElementById('card-number').value,
+            expiry: document.getElementById('card-expiry').value,
+            cvv: document.getElementById('card-cvv').value,
+            name: document.getElementById('card-name').value,
+            brand: 'Visa' // You can detect this from card number
+        };
+    }
+    
+    try {
+        const paymentResponse = await fetch(`${API_SERVICES.payment}/payments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paymentData)
+        });
+        
+        const paymentResult = await paymentResponse.json();
+        
+        if (paymentResponse.ok && paymentResult.payment_status === 'completed') {
+            showNotification('Payment successful! Order confirmed.');
+            
+            // Clear cart
+            cart = [];
+            updateCartDisplay();
+            
+            // Close modal
+            closePaymentModal();
+            
+            // Show order confirmation
+            showSection('orders');
+            fetchUserOrders();
+            
+        } else {
+            showNotification('Payment failed. Please try again.', 'error');
         }
-        return response.json();
-    })
-    .then(newProduct => {
-        showNotification('Product added successfully!');
-        document.getElementById('add-product-form').reset();
-        fetchProducts(); // Refresh product list
-    })
-    .catch(error => {
-        console.error('Error adding product:', error);
-        alert('Failed to add product. Please try again.');
+        
+    } catch (error) {
+        showNotification(`Payment processing error: ${error.message}`, 'error');
+    }
+}
+
+function closePaymentModal() {
+    document.getElementById('payment-modal').style.display = 'none';
+    document.getElementById('payment-form').reset();
+}
+
+// Order management functions
+async function fetchUserOrders() {
+    if (!currentUser) return;
+    
+    try {
+        const response = await fetch(`${API_SERVICES.order}/orders/user/${currentUser.id}`);
+        const orders = await response.json();
+        
+        displayUserOrders(orders);
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+    }
+}
+
+function displayUserOrders(orders) {
+    const ordersList = document.getElementById('orders-list');
+    if (!ordersList) return;
+    
+    if (orders.length === 0) {
+        ordersList.innerHTML = '<p>You have no orders yet.</p>';
+        return;
+    }
+    
+    ordersList.innerHTML = '';
+    
+    orders.forEach(order => {
+        const orderElement = document.createElement('div');
+        orderElement.className = 'order-item';
+        orderElement.innerHTML = `
+            <div class="order-header">
+                <h3>Order #${order.id}</h3>
+                <span class="order-status status-${order.status}">${order.status.toUpperCase()}</span>
+            </div>
+            <div class="order-details">
+                <p><strong>Total:</strong> ₹${order.total_amount}</p>
+                <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString()}</p>
+                <p><strong>Items:</strong> ${order.items ? order.items.length : 0} items</p>
+            </div>
+        `;
+        ordersList.appendChild(orderElement);
     });
 }
 
+// Admin functions
+function showAdminTab(tabName) {
+    // Hide all admin tabs
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.style.display = 'none';
+    });
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(`admin-${tabName}`).style.display = 'block';
+    event.target.classList.add('active');
+    
+    // Load appropriate data
+    if (tabName === 'orders') {
+        loadAllOrders();
+    } else if (tabName === 'users') {
+        loadAllUsers();
+    } else if (tabName === 'payments') {
+        loadPaymentStats();
+    }
+}
+
+async function loadAdminData() {
+    // Load default admin tab data
+    loadAllOrders();
+}
+
+async function loadAllOrders() {
+    try {
+        const response = await fetch(`${API_SERVICES.order}/orders`);
+        const data = await response.json();
+        const orders = data.orders || data;
+        
+        const ordersList = document.getElementById('admin-orders-list');
+        if (orders.length === 0) {
+            ordersList.innerHTML = '<p>No orders found.</p>';
+            return;
+        }
+        
+        ordersList.innerHTML = orders.map(order => `
+            <div class="admin-order-item">
+                <h4>Order #${order.id}</h4>
+                <p>User ID: ${order.user_id} | Total: ₹${order.total_amount} | Status: ${order.status}</p>
+                <p>Date: ${new Date(order.created_at).toLocaleDateString()}</p>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading orders:', error);
+    }
+}
+
+async function loadAllUsers() {
+    try {
+        const response = await fetch(`${API_SERVICES.user}/users`);
+        const users = await response.json();
+        
+        const usersList = document.getElementById('admin-users-list');
+        usersList.innerHTML = users.map(user => `
+            <div class="admin-user-item">
+                <h4>${user.first_name} ${user.last_name}</h4>
+                <p>Username: ${user.username} | Email: ${user.email}</p>
+                <p>Joined: ${new Date(user.created_at).toLocaleDateString()}</p>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+async function loadPaymentStats() {
+    try {
+        const response = await fetch(`${API_SERVICES.payment}/payments/stats`);
+        const stats = await response.json();
+        
+        const statsContainer = document.getElementById('admin-payments-stats');
+        statsContainer.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>Total Payments</h4>
+                    <p>${stats.total_payments}</p>
+                </div>
+                <div class="stat-item">
+                    <h4>Successful Payments</h4>
+                    <p>${stats.completed_payments}</p>
+                </div>
+                <div class="stat-item">
+                    <h4>Success Rate</h4>
+                    <p>${stats.success_rate}%</p>
+                </div>
+                <div class="stat-item">
+                    <h4>Total Revenue</h4>
+                    <p>₹${stats.total_revenue}</p>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error loading payment stats:', error);
+    }
+}
+
+// Enhanced product addition for admin
+async function addProduct(event) {
+    event.preventDefault();
+    
+    const productData = {
+        name: document.getElementById('product-name').value,
+        description: document.getElementById('product-description').value,
+        price: parseFloat(document.getElementById('product-price').value),
+        stock: parseInt(document.getElementById('product-stock').value)
+    };
+    
+    try {
+        const response = await fetch(`${API_SERVICES.product}/products`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(productData)
+        });
+        
+        if (response.ok) {
+            showNotification('Product added successfully!');
+            document.getElementById('add-product-form').reset();
+            fetchProducts(); // Refresh product list
+        } else {
+            const error = await response.json();
+            showNotification(error.error || 'Failed to add product', 'error');
+        }
+    } catch (error) {
+        showNotification('Network error while adding product', 'error');
+    }
+}
+
 // Utility functions
-function showNotification(message) {
-    // Create a simple notification
+function showNotification(message, type = 'success') {
     const notification = document.createElement('div');
-    notification.className = 'notification';
+    notification.className = `notification ${type}`;
     notification.textContent = message;
     document.body.appendChild(notification);
     

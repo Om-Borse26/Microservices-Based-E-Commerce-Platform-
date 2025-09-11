@@ -102,6 +102,28 @@ def register():
         db.session.add(user)
         db.session.commit()
         
+        # Send welcome email notification
+        try:
+            import requests
+            notification_data = {
+                'user_id': user.id,
+                'type': 'email',
+                'category': 'welcome',
+                'title': 'Welcome to ShopEase!',
+                'message': f'Welcome {user.first_name or user.username}! Your account has been created successfully.',
+                'recipient_email': user.email
+            }
+            
+            # Call notification service
+            requests.post(
+                'http://localhost:5005/notifications',
+                json=notification_data,
+                timeout=5
+            )
+        except Exception as email_error:
+            # Don't fail registration if email fails
+            print(f"Welcome email failed: {email_error}")
+        
         return jsonify({
             'message': 'User registered successfully',
             'user': user.to_dict()
@@ -138,6 +160,15 @@ def login():
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/users/<int:user_id>', methods=['GET'])
+def get_user_by_id(user_id):
+    """Get user by ID - for inter-service communication"""
+    try:
+        user = User.query.get_or_404(user_id)
+        return jsonify(user.to_dict()), 200
+    except Exception as e:
+        return jsonify({'error': 'User not found'}), 404
 
 @app.route('/profile', methods=['GET'])
 @token_required
