@@ -22,8 +22,9 @@ pipeline {
     }
     stage('Compute Version') {
       steps {
+        bat 'for /f %%i in (''git rev-parse --short HEAD'') do set IMAGE_TAG=%%i'
         script {
-          env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG = env.IMAGE_TAG ?: ''
           echo "Image tag (short SHA): ${env.IMAGE_TAG}"
         }
       }
@@ -80,20 +81,15 @@ pipeline {
       }
     }
     stage('Tag and Push Images') {
-      steps {
-        sh '''
-          set -e
-          ns=${DOCKERHUB_USER}
-          tag=${IMAGE_TAG}
-          images="product_service user_service order_service payment_service notification_service frontend"
-          for img in $images; do
-            docker tag "$ns/$img:latest" "$ns/$img:$tag"
-          done
-          docker compose push
-          for img in $images; do
-            docker push "$ns/$img:$tag"
-          done
-        '''
+            steps {
+                bat '''
+                  set ns=%DOCKERHUB_USER%
+                  set tag=%IMAGE_TAG%
+                  set images=product_service user_service order_service payment_service notification_service frontend
+                  for %%i in (%images%) do docker tag %ns%/%%i:latest %ns%/%%i:%tag%
+                  docker compose push
+                  for %%i in (%images%) do docker push %ns%/%%i:%tag%
+                '''
       }
     }
     stage('Deploy to Staging (optional)') {
