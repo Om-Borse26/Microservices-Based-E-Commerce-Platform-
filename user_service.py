@@ -108,21 +108,29 @@ def register():
             notification_data = {
                 'user_id': user.id,
                 'type': 'email',
-                'category': 'welcome',
+                'category': 'user_registration',
                 'title': 'Welcome to ShopEase!',
                 'message': f'Welcome {user.first_name or user.username}! Your account has been created successfully.',
-                'recipient_email': user.email
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name
             }
             
             # Call notification service
-            requests.post(
+            response = requests.post(
                 'http://localhost:5005/notifications',
                 json=notification_data,
-                timeout=5
+                timeout=10
             )
+            if response.status_code in [200, 201]:
+                print(f"✅ Welcome email notification sent successfully for user {user.username}")
+            else:
+                print(f"⚠️  Welcome email notification failed with status {response.status_code}")
+                
         except Exception as email_error:
             # Don't fail registration if email fails
-            print(f"Welcome email failed: {email_error}")
+            print(f"❌ Welcome email failed: {email_error}")
         
         return jsonify({
             'message': 'User registered successfully',

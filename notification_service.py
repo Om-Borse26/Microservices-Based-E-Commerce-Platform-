@@ -82,14 +82,21 @@ class Notification(db.Model):
 def get_user_details(user_id):
     """Fetch user details from user service"""
     try:
-        response = requests.get(f'{USER_SERVICE_URL}/users')
+        # Try to get specific user first
+        response = requests.get(f'{USER_SERVICE_URL}/users/{user_id}', timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        
+        # Fallback: get all users and filter (for backward compatibility)
+        response = requests.get(f'{USER_SERVICE_URL}/users', timeout=5)
         if response.status_code == 200:
             users = response.json()
             for user in users:
                 if user['id'] == user_id:
                     return user
         return None
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"❌ Failed to get user details for user_id {user_id}: {str(e)}")
         return None
 
 def send_email_notification(recipient_email, subject, message):
@@ -183,22 +190,73 @@ def create_email_template(category, data):
             '''
         },
         'payment_confirmation': {
-            'subject': f'Payment Confirmation - {data.get("payment_id", "N/A")}',
+            'subject': f'Payment Confirmation - Order #{data.get("order_id", "N/A")}',
             'body': f'''
             <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background: #2196F3; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background: #f9f9f9; }}
+                    .footer {{ padding: 20px; text-align: center; color: #666; }}
+                    .success {{ background: #4CAF50; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 15px 0; }}
+                    .details {{ background: white; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+                </style>
+            </head>
             <body>
-                <h2>Payment Confirmation</h2>
-                <p>Dear Customer,</p>
-                <p>Your payment has been successfully processed.</p>
-                <p><strong>Payment Details:</strong></p>
-                <ul>
-                    <li>Payment ID: {data.get("payment_id", "N/A")}</li>
-                    <li>Order ID: #{data.get("order_id", "N/A")}</li>
-                    <li>Amount: ₹{data.get("amount", "0")}</li>
-                    <li>Status: {data.get("payment_status", "Completed")}</li>
-                </ul>
-                <p>Your order is now being processed and will be shipped soon.</p>
-                <p>Thank you for your business!</p>
+                <div class="container">
+                    <div class="header">
+                        <h1>Payment Successful!</h1>
+                    </div>
+                    <div class="content">
+                        <div class="success">
+                            <strong>✅ Your payment has been successfully processed!</strong>
+                        </div>
+                        <h2>Payment Confirmation</h2>
+                        <p>Dear Customer,</p>
+                        <p>Thank you for your payment. Your transaction has been completed successfully.</p>
+                        
+                        <div class="details">
+                            <h3>Payment Details:</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                    <td style="padding: 8px; font-weight: bold;">Payment ID:</td>
+                                    <td style="padding: 8px;">{data.get("payment_id", "N/A")}</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                    <td style="padding: 8px; font-weight: bold;">Order ID:</td>
+                                    <td style="padding: 8px;">#{data.get("order_id", "N/A")}</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                    <td style="padding: 8px; font-weight: bold;">Amount Paid:</td>
+                                    <td style="padding: 8px; color: #4CAF50; font-weight: bold;">₹{data.get("amount", "0")}</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                    <td style="padding: 8px; font-weight: bold;">Payment Status:</td>
+                                    <td style="padding: 8px; color: #4CAF50;">{data.get("payment_status", "Completed").title()}</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                    <td style="padding: 8px; font-weight: bold;">Payment Method:</td>
+                                    <td style="padding: 8px;">{data.get("payment_method", "N/A").title()}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; font-weight: bold;">Transaction Date:</td>
+                                    <td style="padding: 8px;">{datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <p>Your order is now being processed and will be shipped soon. You will receive another notification with tracking details once your order is dispatched.</p>
+                        
+                        <p>If you have any questions about your payment or order, please contact our support team at sparxvenom69@gmail.com</p>
+                    </div>
+                    <div class="footer">
+                        <p>Thank you for your business!</p>
+                        <p>Best regards,<br>The ShopEase Team</p>
+                        <p><small>This is an automated message. Please do not reply to this email.</small></p>
+                    </div>
+                </div>
             </body>
             </html>
             '''
@@ -222,6 +280,93 @@ def create_email_template(category, data):
             </html>
             '''
         },
+        'welcome': {
+            'subject': 'Welcome to ShopEase! Your Account is Ready',
+            'body': f'''
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background: #4CAF50; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background: #f9f9f9; }}
+                    .footer {{ padding: 20px; text-align: center; color: #666; }}
+                    .button {{ background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Welcome to ShopEase!</h1>
+                    </div>
+                    <div class="content">
+                        <h2>Hi {data.get('username', 'Valued Customer')}!</h2>
+                        <p>Thank you for registering with ShopEase. Your account has been successfully created!</p>
+                        <p><strong>Your Account Details:</strong></p>
+                        <ul>
+                            <li>Email: {data.get('email', 'N/A')}</li>
+                            <li>Registration Date: {datetime.datetime.now().strftime('%B %d, %Y')}</li>
+                        </ul>
+                        <p>You can now start shopping and enjoy our wide range of products with exclusive deals and offers.</p>
+                        <p style="text-align: center;">
+                            <a href="http://localhost:3000" class="button">Start Shopping</a>
+                        </p>
+                        <p>If you have any questions or need assistance, feel free to contact our support team.</p>
+                    </div>
+                    <div class="footer">
+                        <p>Thank you for choosing ShopEase!</p>
+                        <p>Best regards,<br>The ShopEase Team</p>
+                        <p><small>This is an automated message. Please do not reply to this email.</small></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            '''
+        },
+        'user_registration': {
+            'subject': 'Welcome to ShopEase! Your Account is Ready',
+            'body': f'''
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background: #4CAF50; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background: #f9f9f9; }}
+                    .footer {{ padding: 20px; text-align: center; color: #666; }}
+                    .button {{ background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Welcome to ShopEase!</h1>
+                    </div>
+                    <div class="content">
+                        <h2>Hi {data.get('username', 'Valued Customer')}!</h2>
+                        <p>Thank you for registering with ShopEase. Your account has been successfully created!</p>
+                        <p><strong>Your Account Details:</strong></p>
+                        <ul>
+                            <li>Username: {data.get('username', 'N/A')}</li>
+                            <li>Email: {data.get('email', 'N/A')}</li>
+                            <li>Registration Date: {datetime.datetime.now().strftime('%B %d, %Y')}</li>
+                        </ul>
+                        <p>You can now start shopping and enjoy our wide range of products with exclusive deals and offers.</p>
+                        <p style="text-align: center;">
+                            <a href="http://localhost:3000" class="button">Start Shopping</a>
+                        </p>
+                        <p>If you have any questions or need assistance, feel free to contact our support team at sparxvenom69@gmail.com</p>
+                    </div>
+                    <div class="footer">
+                        <p>Thank you for choosing ShopEase!</p>
+                        <p>Best regards,<br>The ShopEase Team</p>
+                        <p><small>This is an automated message. Please do not reply to this email.</small></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            '''
+        },
         'general': {
             'subject': data.get('title', 'Notification from ShopEase'),
             'body': f'''
@@ -241,6 +386,60 @@ def create_email_template(category, data):
 
 # Routes
 
+@app.route('/test-email', methods=['POST'])
+def test_email():
+    """Test email sending directly without user lookup"""
+    try:
+        data = request.get_json()
+        
+        # Required fields for direct email test
+        required_fields = ['email', 'subject', 'category']
+        if not data or not all(field in data for field in required_fields):
+            return jsonify({'error': 'Missing required fields: email, subject, category'}), 400
+        
+        # Create email template
+        template_data = {
+            'title': data.get('subject', 'Test Email'),
+            'message': data.get('message', 'This is a test email'),
+            'username': data.get('username', 'Test User'),
+            'email': data.get('email'),
+            'first_name': data.get('first_name', 'Test'),
+            'last_name': data.get('last_name', 'User'),
+            'order_id': data.get('order_id', '12345'),
+            'payment_id': data.get('payment_id', 'PAY_TEST123'),
+            'amount': data.get('amount', '1000'),
+            'payment_status': data.get('payment_status', 'completed'),
+            'payment_method': data.get('payment_method', 'card'),
+            'transaction_id': data.get('transaction_id', 'TXN_TEST456')
+        }
+        
+        template = create_email_template(data['category'], template_data)
+        
+        # Send email directly
+        success, error_message = send_email_notification(
+            data['email'], 
+            template['subject'], 
+            template['body']
+        )
+        
+        if success:
+            return jsonify({
+                'message': 'Test email sent successfully',
+                'recipient': data['email'],
+                'subject': template['subject'],
+                'category': data['category'],
+                'success': True
+            }), 200
+        else:
+            return jsonify({
+                'error': 'Failed to send test email',
+                'details': error_message,
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for monitoring"""
@@ -257,10 +456,20 @@ def create_notification():
         if not data or not all(field in data for field in required_fields):
             return jsonify({'error': 'Missing required fields: user_id, type, message'}), 400
         
-        # Get user details
+        # Get user details - but allow fallback if user service is unavailable
         user = get_user_details(data['user_id'])
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+        
+        # If we can't get user details but email is provided directly, use that
+        if not user and data.get('email'):
+            user = {
+                'id': data['user_id'],
+                'email': data['email'],
+                'username': data.get('username', 'User'),
+                'first_name': data.get('first_name', ''),
+                'last_name': data.get('last_name', '')
+            }
+        elif not user:
+            return jsonify({'error': 'User not found and no email provided'}), 404
         
         # Create notification record
         notification = Notification(

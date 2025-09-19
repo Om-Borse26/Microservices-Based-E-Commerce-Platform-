@@ -104,33 +104,55 @@ def update_order_status(order_id, status):
 def send_payment_notification(user_id, payment_data, order_id):
     """Send payment notification via notification service"""
     try:
-        # First, get user email from user service
-        user_response = requests.get(f'http://localhost:5001/users/{user_id}')
-        if user_response.status_code == 200:
-            user_data = user_response.json()
-            user_email = user_data.get('email')
-        else:
-            print(f"Could not get user email for user_id {user_id}")
-            return False
+        # First, try to get user email from user service
+        user_email = None
+        user_name = "Customer"
+        
+        try:
+            user_response = requests.get(f'http://localhost:5001/users/{user_id}', timeout=5)
+            if user_response.status_code == 200:
+                user_data = user_response.json()
+                user_email = user_data.get('email')
+                user_name = user_data.get('first_name') or user_data.get('username', 'Customer')
+        except requests.RequestException:
+            print(f"⚠️  Could not get user details from user service for user_id {user_id}")
         
         notification_data = {
             'user_id': user_id,
             'type': 'email',
             'category': 'payment_confirmation',
             'title': f'Payment Confirmation - Order #{order_id}',
-            'message': f"Payment of ${payment_data['amount']} for Order #{order_id} has been {payment_data['payment_status']}",
-            'recipient_email': user_email,  # FIXED: Now sends to actual user's email
+            'message': f"Payment of ₹{payment_data['amount']} for Order #{order_id} has been {payment_data['payment_status']}",
             'payment_id': payment_data['payment_id'],
-            'order_id': order_id
+            'order_id': order_id,
+            'amount': payment_data['amount'],
+            'payment_status': payment_data['payment_status'],
+            'payment_method': payment_data['payment_method'],
+            'transaction_id': payment_data.get('transaction_id', 'N/A'),
+            'username': user_name
         }
+        
+        # Include email if we got it from user service
+        if user_email:
+            notification_data['email'] = user_email
         
         response = requests.post(
             f'{NOTIFICATION_SERVICE_URL}/notifications',
             headers={'Content-Type': 'application/json'},
-            json=notification_data
+            json=notification_data,
+            timeout=10
         )
-        return response.status_code in [200, 201]
-    except requests.RequestException:
+        
+        if response.status_code in [200, 201]:
+            print(f"✅ Payment notification sent successfully for payment {payment_data['payment_id']}")
+            return True
+        else:
+            print(f"⚠️  Payment notification failed with status {response.status_code}")
+            print(f"⚠️  Response: {response.text}")
+            return False
+            
+    except requests.RequestException as e:
+        print(f"❌ Payment notification failed: {str(e)}")
         return False
 
 # Routes
