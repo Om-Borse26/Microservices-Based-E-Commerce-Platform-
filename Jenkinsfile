@@ -17,13 +17,11 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        ansiColor('xterm')
         checkout scm
       }
     }
     stage('Compute Version') {
       steps {
-        ansiColor('xterm')
         script {
           env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           echo "Image tag (short SHA): ${env.IMAGE_TAG}"
@@ -32,7 +30,6 @@ pipeline {
     }
     stage('Docker Build') {
       steps {
-        ansiColor('xterm')
         sh '''
           set -e
           echo "Building images under namespace: ${DOCKERHUB_USER}"
@@ -43,7 +40,6 @@ pipeline {
     }
     stage('Start Stack For Smoke Tests') {
       steps {
-        ansiColor('xterm')
         sh '''
           set -e
           export DOCKERHUB_USER=${DOCKERHUB_USER}
@@ -65,7 +61,6 @@ pipeline {
     }
     stage('Health Checks') {
       steps {
-        ansiColor('xterm')
         sh '''
           set -e
           bash scripts/wait_for_http.sh http://localhost:5000/health 60
@@ -79,7 +74,6 @@ pipeline {
     }
     stage('Smoke Tests') {
       steps {
-        ansiColor('xterm')
         sh '''
           set -e
           bash scripts/smoke_test.sh
@@ -88,7 +82,6 @@ pipeline {
     }
     stage('Login to Docker Hub') {
       steps {
-        ansiColor('xterm')
         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
           sh '''
             set -e
@@ -99,7 +92,6 @@ pipeline {
     }
     stage('Tag and Push Images') {
       steps {
-        ansiColor('xterm')
         sh '''
           set -e
           ns=${DOCKERHUB_USER}
@@ -120,7 +112,6 @@ pipeline {
         expression { return env.STAGING_HOST?.trim() && env.STAGING_SSH_USER?.trim() && env.STAGING_DIR?.trim() }
       }
       steps {
-        ansiColor('xterm')
         sshagent (credentials: ['deploy-ssh']) {
           sh '''
             set -e
