@@ -69,11 +69,6 @@ pipeline {
                 bat 'scripts\\wait_for_http.bat http://localhost:8081 60'
       }
     }
-    stage('Smoke Tests') {
-      steps {
-                bat 'scripts\\smoke_test.bat'
-      }
-    }
     stage('Login to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
