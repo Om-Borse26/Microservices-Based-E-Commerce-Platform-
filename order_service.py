@@ -3,19 +3,23 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import datetime
 import requests
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Yog%40101619@localhost/orderdb'
+# Configure Database via env var with fallback
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'mysql+pymysql://root:Yog%40101619@localhost/orderdb'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices
-PRODUCT_SERVICE_URL = 'http://localhost:5000'
-USER_SERVICE_URL = 'http://localhost:5001'
+# Configuration for other microservices via env
+PRODUCT_SERVICE_URL = os.getenv('PRODUCT_SERVICE_URL', 'http://localhost:5000')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
 
 # Order Model
 class Order(db.Model):
@@ -272,4 +276,6 @@ def home():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5002)  # Different port from other services
+    port = int(os.getenv('PORT', 5002))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

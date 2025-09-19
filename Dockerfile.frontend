@@ -1,0 +1,7 @@
+# Simple Nginx container to serve static frontend
+FROM nginx:1.27-alpine
+
+COPY frontend /usr/share/nginx/html
+
+# Replace API endpoints at runtime via envsubst? Keep localhost for now and document override
+EXPOSE 80

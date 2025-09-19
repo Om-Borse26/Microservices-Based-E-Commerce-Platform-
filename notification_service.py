@@ -4,6 +4,7 @@ from flask_cors import CORS
 import datetime
 import requests
 import smtplib
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -11,32 +12,35 @@ from email.mime.multipart import MIMEMultipart
 try:
     from email_config import EMAIL_CONFIG
     # Use configuration from email_config.py
-    SMTP_SERVER = EMAIL_CONFIG['SMTP_SERVER']
-    SMTP_PORT = EMAIL_CONFIG['SMTP_PORT']
-    EMAIL_USER = EMAIL_CONFIG['EMAIL_USER']
-    EMAIL_PASSWORD = EMAIL_CONFIG['EMAIL_PASSWORD']
-    ENABLE_REAL_EMAIL_SENDING = EMAIL_CONFIG['ENABLE_REAL_EMAIL_SENDING']
-    FROM_NAME = EMAIL_CONFIG['FROM_NAME']
+    SMTP_SERVER = os.getenv('SMTP_SERVER', EMAIL_CONFIG['SMTP_SERVER'])
+    SMTP_PORT = int(os.getenv('SMTP_PORT', EMAIL_CONFIG['SMTP_PORT']))
+    EMAIL_USER = os.getenv('EMAIL_USER', EMAIL_CONFIG['EMAIL_USER'])
+    EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', EMAIL_CONFIG['EMAIL_PASSWORD'])
+    ENABLE_REAL_EMAIL_SENDING = os.getenv('ENABLE_REAL_EMAIL_SENDING', str(EMAIL_CONFIG['ENABLE_REAL_EMAIL_SENDING'])).lower() == 'true'
+    FROM_NAME = os.getenv('FROM_NAME', EMAIL_CONFIG['FROM_NAME'])
 except ImportError:
     # Direct configuration - use your actual Gmail credentials
-    SMTP_SERVER = 'smtp.gmail.com'
-    SMTP_PORT = 587
-    EMAIL_USER = 'sparxvenom69@gmail.com'
-    EMAIL_PASSWORD = 'xqcr gmky lczv iilz'
-    ENABLE_REAL_EMAIL_SENDING = True  # Enable real email sending
-    FROM_NAME = 'ShopEase E-Commerce'
+    SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+    EMAIL_USER = os.getenv('EMAIL_USER', 'your-email@gmail.com')
+    EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', '')
+    ENABLE_REAL_EMAIL_SENDING = os.getenv('ENABLE_REAL_EMAIL_SENDING', 'False').lower() == 'true'
+    FROM_NAME = os.getenv('FROM_NAME', 'ShopEase E-Commerce')
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Yog%40101619@localhost/notificationdb'
+# Configure Database via env var with fallback
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'mysql+pymysql://root:Yog%40101619@localhost/notificationdb'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices
-USER_SERVICE_URL = 'http://localhost:5001'
+# Configuration for other microservices via env
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
 
 # Notification Model
 class Notification(db.Model):
@@ -687,4 +691,6 @@ def home():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5005)  # Notification Service on port 5005
+    port = int(os.getenv('PORT', 5005))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

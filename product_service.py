@@ -1,12 +1,16 @@
 from flask import Flask, request, jsonify, abort, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database - Replace username, password, dbname accordingly
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Yog%40101619@localhost/productdb'
+# Configure Database via env var with fallback
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'mysql+pymysql://root:Yog%40101619@localhost/productdb'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -165,4 +169,6 @@ def home():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

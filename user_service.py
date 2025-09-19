@@ -4,17 +4,24 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
+import os
 from functools import wraps
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Yog%40101619@localhost/userdb'
+# Configure Database and Secrets via environment variables (with sensible defaults)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'mysql+pymysql://root:Yog%40101619@localhost/userdb'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key-here'  # Change this in production
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
 db = SQLAlchemy(app)
+
+# Configuration for other microservices
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5005')
 
 # User Model
 class User(db.Model):
@@ -119,7 +126,7 @@ def register():
             
             # Call notification service
             response = requests.post(
-                'http://localhost:5005/notifications',
+                f"{NOTIFICATION_SERVICE_URL}/notifications",
                 json=notification_data,
                 timeout=10
             )
@@ -234,4 +241,6 @@ def home():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5001)  # Different port from product service
+    port = int(os.getenv('PORT', 5001))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

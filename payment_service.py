@@ -5,19 +5,24 @@ import datetime
 import requests
 import uuid
 import random
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Yog%40101619@localhost/paymentdb'
+# Configure Database via env var with fallback
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'mysql+pymysql://root:Yog%40101619@localhost/paymentdb'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices
-ORDER_SERVICE_URL = 'http://localhost:5002'
-NOTIFICATION_SERVICE_URL = 'http://localhost:5005'  # Fixed: Notification service is on port 5005
+# Configuration for other microservices via env
+ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://localhost:5002')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5005')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
 
 # Payment Model
 class Payment(db.Model):
@@ -109,7 +114,7 @@ def send_payment_notification(user_id, payment_data, order_id):
         user_name = "Customer"
         
         try:
-            user_response = requests.get(f'http://localhost:5001/users/{user_id}', timeout=5)
+            user_response = requests.get(f'{USER_SERVICE_URL}/users/{user_id}', timeout=5)
             if user_response.status_code == 200:
                 user_data = user_response.json()
                 user_email = user_data.get('email')
@@ -350,4 +355,6 @@ def home():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5003)  # Payment Service on port 5003
+    port = int(os.getenv('PORT', 5003))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

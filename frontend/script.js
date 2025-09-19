@@ -11,7 +11,7 @@ const API_SERVICES = {
     user: 'http://localhost:5001',
     order: 'http://localhost:5002',
     payment: 'http://localhost:5003',
-    notification: 'http://localhost:5004'
+    notification: 'http://localhost:5005'
 };
 
 // Initialize the application
