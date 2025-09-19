@@ -332,3 +332,57 @@ foreach ($img in "product_service","user_service","order_service","payment_servi
 - If push fails: confirm `docker login` and repository names match exactly.
 - If ports are busy: update host port mappings in `docker-compose.yml` (frontend uses 8081; MySQL maps host 3307 → container 3306).
 - Email not received: verify Gmail App Password, `SMTP_SERVER/PORT`, and that `ENABLE_REAL_EMAIL_SENDING=True`.
+
+---
+
+## CI/CD with Jenkins
+
+Automate build, test, and image publishing when you push to GitHub, using the provided `Jenkinsfile` and helper scripts.
+
+### Requirements (Jenkins agent)
+- Linux agent recommended (shell steps use `bash`)
+- Docker Engine + Docker Compose v2 (`docker compose` CLI)
+- `curl` and `jq` installed for smoke tests
+
+### Jenkins plugins
+- Pipeline (Declarative)
+- Git / Git client
+- Email Extension Plugin (or Mailer)
+- GitHub (optional, for webhooks and status)
+
+### Credentials to configure
+Create these in Jenkins > Manage Jenkins > Credentials:
+- `dockerhub-username-only` (Secret text): your Docker Hub username (used for `DOCKERHUB_USER`)
+- `dockerhub-credentials` (Username with password): Docker Hub username + PAT/password (for `docker login`)
+
+Optional Jenkins global env or job parameter:
+- `NOTIFY_EMAIL`: recipient for build notifications
+
+### Job setup
+1) Create a Pipeline job
+2) Choose “Pipeline script from SCM” and point to this Git repo (branch `main`)
+3) Script path: `Jenkinsfile`
+4) Set build triggers:
+	- Option A: Check “Build when a change is pushed to GitHub” and configure a GitHub webhook to your Jenkins URL `/github-webhook/`
+	- Option B: Configure polling (e.g., `H/5 * * * *`) if webhooks aren’t possible
+
+### What the pipeline does
+1) Checkout and compute image tag from short Git SHA
+2) Build all images with `docker compose`
+3) Bring up stack for health checks
+4) Run smoke tests via `scripts/smoke_test.sh`
+5) Login to Docker Hub and push:
+	- `latest` via `docker compose push`
+	- version tag (short SHA) for all images
+6) On success/failure: send notification email (requires Email Extension configured)
+
+### Helper scripts
+- `scripts/wait_for_http.sh`: wait for HTTP 200/301/302 or timeout
+- `scripts/smoke_test.sh`: minimal end-to-end flow (seed → register/login → order → pay)
+
+### Common CI issues
+- Missing `jq`: install with your distro package manager (e.g., `apt-get install -y jq`)
+- Compose command not found: ensure Docker Desktop is not required; install Docker Compose v2 on the agent
+- Docker perms: add Jenkins user to `docker` group or run on an agent with proper privileges
+- Email fails: configure SMTP in Jenkins and/or switch to the simpler `mail` step
+
