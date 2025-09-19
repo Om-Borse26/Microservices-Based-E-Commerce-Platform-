@@ -61,23 +61,17 @@ pipeline {
     }
     stage('Health Checks') {
       steps {
-        sh '''
-          set -e
-          bash scripts/wait_for_http.sh http://localhost:5000/health 60
-          bash scripts/wait_for_http.sh http://localhost:5001/health 60
-          bash scripts/wait_for_http.sh http://localhost:5002/health 60
-          bash scripts/wait_for_http.sh http://localhost:5003/health 60
-          bash scripts/wait_for_http.sh http://localhost:5005/health 60
-          bash scripts/wait_for_http.sh http://localhost:8081 60
-        '''
+                bat 'scripts\\wait_for_http.bat http://localhost:5000/health 60'
+                bat 'scripts\\wait_for_http.bat http://localhost:5001/health 60'
+                bat 'scripts\\wait_for_http.bat http://localhost:5002/health 60'
+                bat 'scripts\\wait_for_http.bat http://localhost:5003/health 60'
+                bat 'scripts\\wait_for_http.bat http://localhost:5005/health 60'
+                bat 'scripts\\wait_for_http.bat http://localhost:8081 60'
       }
     }
     stage('Smoke Tests') {
       steps {
-        sh '''
-          set -e
-          bash scripts/smoke_test.sh
-        '''
+                bat 'scripts\\smoke_test.bat'
       }
     }
     stage('Login to Docker Hub') {
