@@ -88,7 +88,11 @@ pipeline {
                   set images=product_service user_service order_service payment_service notification_service frontend
                   for %%i in (%images%) do docker tag %ns%/%%i:latest %ns%/%%i:%tag%
                   docker compose push
-                  for %%i in (%images%) do docker push %ns%/%%i:%tag%
+                  if not "%tag%"=="" (
+                    for %%i in (%images%) do docker push %ns%/%%i:%tag%
+                  ) else (
+                    echo Skipping tag push: IMAGE_TAG is empty
+                  )
                 '''
       }
     }
