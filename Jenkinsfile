@@ -22,9 +22,9 @@ pipeline {
     }
     stage('Compute Version') {
       steps {
-        bat 'for /f %%i in (''git rev-parse --short HEAD'') do set IMAGE_TAG=%%i'
         script {
-          env.IMAGE_TAG = env.IMAGE_TAG ?: ''
+          def tagOut = bat(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG = tagOut
           echo "Image tag (short SHA): ${env.IMAGE_TAG}"
         }
       }
