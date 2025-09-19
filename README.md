@@ -8,7 +8,7 @@ This project includes Dockerfiles for each microservice and a `docker-compose.ym
 
 ### Quick Start (compose)
 
-Run all services (MySQL + microservices + frontend on port 8080):
+Run all services (MySQL + microservices + frontend on port 8081):
 
 ```powershell
 docker compose up --build
@@ -20,7 +20,7 @@ Services map to host ports:
 - order_service: `http://localhost:5002`
 - payment_service: `http://localhost:5003`
 - notification_service: `http://localhost:5005`
-- frontend (static): `http://localhost:8080`
+- frontend (static): `http://localhost:8081`
 
 Environment overrides (PowerShell examples):
 
