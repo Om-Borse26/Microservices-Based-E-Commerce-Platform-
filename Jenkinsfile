@@ -24,16 +24,21 @@ pipeline {
     STAGING_DIR = ''
   }
   stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
     stage('Detect Changed Services') {
       steps {
         script {
           def base = ''
-          // Try to find previous commit to diff against; if none, build all
           try {
-            base = bat(script: 'git rev-parse HEAD^', returnStdout: true).trim()
+            base = bat(script: 'git rev-parse --verify HEAD~1', returnStdout: true).trim()
           } catch (ignored) {
             base = ''
           }
+          echo "Base commit for diff: '${base}'"
           def diffCmd = base ? "git diff --name-only ${base} HEAD" : 'git ls-files'
           def files = bat(script: diffCmd, returnStdout: true).trim()
           echo "Changed files:\n${files}"
@@ -54,11 +59,6 @@ pipeline {
           echo "CHANGED_SERVICES='${env.CHANGED_SERVICES}'"
           echo "DRY_RUN='${params.DRY_RUN}'"
         }
-      }
-    }
-    stage('Checkout') {
-      steps {
-        checkout scm
       }
     }
     stage('Compute Version') {
