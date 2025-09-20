@@ -116,9 +116,7 @@ if "%SERVICES%"=="" set "SERVICES=product_service user_service order_service pay
 
 REM Tag flow: create SHA tag from latest, then make latest point to the SHA tag
 for %%s in (%SERVICES%) do (
-  echo Tagging %NS%/%%s:latest as %NS%/%%s:%TAG%
-  docker tag %NS%/%%s:latest %NS%/%%s:%TAG% || exit /b 1
-  echo Updating latest to match %NS%/%%s:%TAG%
+  echo Tagging freshly built image as %NS%/%%s:%TAG%
   docker tag %NS%/%%s:%TAG% %NS%/%%s:latest || exit /b 1
 )
 
