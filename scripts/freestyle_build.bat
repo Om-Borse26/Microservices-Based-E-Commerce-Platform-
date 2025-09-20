@@ -109,16 +109,28 @@ echo Logging into Docker Hub as %DOCKERHUB_USERNAME%
 > tmp_pwd.txt echo %DOCKERHUB_TOKEN%
 docker login -u "%DOCKERHUB_USERNAME%" --password-stdin < tmp_pwd.txt || exit /b 1
 del tmp_pwd.txt
+echo Current Docker Hub login:
+docker info | findstr /I "Username:"
 
 if "%SERVICES%"=="" set "SERVICES=product_service user_service order_service payment_service notification_service frontend"
 
 REM Tag flow: create SHA tag from latest, then make latest point to the SHA tag
-for %%s in (%SERVICES%) do docker tag %NS%/%%s:latest %NS%/%%s:%TAG% || exit /b 1
-for %%s in (%SERVICES%) do docker tag %NS%/%%s:%TAG% %NS%/%%s:latest || exit /b 1
+for %%s in (%SERVICES%) do (
+  echo Tagging %NS%/%%s:latest as %NS%/%%s:%TAG%
+  docker tag %NS%/%%s:latest %NS%/%%s:%TAG% || exit /b 1
+  echo Updating latest to match %NS%/%%s:%TAG%
+  docker tag %NS%/%%s:%TAG% %NS%/%%s:latest || exit /b 1
+)
 
 REM Push SHA first, then latest, so both reflect the same image
-for %%s in (%SERVICES%) do docker push %NS%/%%s:%TAG% || exit /b 1
-for %%s in (%SERVICES%) do docker push %NS%/%%s:latest || exit /b 1
+for %%s in (%SERVICES%) do (
+  echo Pushing %NS%/%%s:%TAG%
+  docker push %NS%/%%s:%TAG% || (echo ERROR: Push failed for %NS%/%%s:%TAG%. Ensure repo exists and your token has write access.& exit /b 1)
+)
+for %%s in (%SERVICES%) do (
+  echo Pushing %NS%/%%s:latest
+  docker push %NS%/%%s:latest || (echo ERROR: Push failed for %NS%/%%s:latest. Ensure repo exists and your token has write access.& exit /b 1)
+)
 
 docker logout
 
