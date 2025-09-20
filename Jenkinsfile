@@ -3,18 +3,59 @@ pipeline {
   options {
     timestamps()
   }
+  parameters {
+    booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'If true, only print planned actions without building/pushing')
+    booleanParam(name: 'RUN_TESTS', defaultValue: false, description: 'Run local stack and health checks (Windows agents skip by default)')
+  }
+  triggers {
+    pollSCM('* * * * *')
+  }
   environment {
     DOCKER_BUILDKIT = '1'
     COMPOSE_DOCKER_CLI_BUILD = '1'
     // Set your Docker Hub namespace here or via Jenkins env
     DOCKERHUB_USER = credentials('dockerhub-username-only')
     IMAGE_TAG = ''
-    // Optional deploy settings; set as Jenkins environment vars
+  // Notifications
+  NOTIFY_EMAIL = "omborse1618@gmail.com"
+  // Optional deploy settings; set as Jenkins environment vars
     STAGING_HOST = ''
     STAGING_SSH_USER = ''
     STAGING_DIR = ''
   }
   stages {
+    stage('Detect Changed Services') {
+      steps {
+        script {
+          def base = ''
+          // Try to find previous commit to diff against; if none, build all
+          try {
+            base = bat(script: 'git rev-parse HEAD^', returnStdout: true).trim()
+          } catch (ignored) {
+            base = ''
+          }
+          def diffCmd = base ? "git diff --name-only ${base} HEAD" : 'git ls-files'
+          def files = bat(script: diffCmd, returnStdout: true).trim()
+          echo "Changed files:\n${files}"
+          def services = [] as Set
+          files.split(/\r?\n/).each { f ->
+            if (f == null || f.trim() == '') return
+            if (f.startsWith('Dockerfile.product') || f.contains('product_service.py')) services << 'product_service'
+            if (f.startsWith('Dockerfile.user') || f.contains('user_service.py')) services << 'user_service'
+            if (f.startsWith('Dockerfile.order') || f.contains('order_service.py')) services << 'order_service'
+            if (f.startsWith('Dockerfile.payment') || f.contains('payment_service.py')) services << 'payment_service'
+            if (f.startsWith('Dockerfile.notification') || f.contains('notification_service.py')) services << 'notification_service'
+            if (f.startsWith('Dockerfile.frontend') || f.startsWith('frontend/')) services << 'frontend'
+            if (f == 'docker-compose.yml' || f.startsWith('requirements.txt')) {
+              services.addAll(['product_service','user_service','order_service','payment_service','notification_service','frontend'])
+            }
+          }
+          env.CHANGED_SERVICES = services.join(' ')
+          echo "CHANGED_SERVICES='${env.CHANGED_SERVICES}'"
+          echo "DRY_RUN='${params.DRY_RUN}'"
+        }
+      }
+    }
     stage('Checkout') {
       steps {
         checkout scm
@@ -31,15 +72,30 @@ pipeline {
     }
     stage('Docker Build') {
       steps {
-        sh '''
-          set -e
-          echo "Building images under namespace: ${DOCKERHUB_USER}"
-          export DOCKERHUB_USER=${DOCKERHUB_USER}
-          docker compose build --pull
+        bat '''
+          set ns=%DOCKERHUB_USER%
+          set services=%CHANGED_SERVICES%
+          echo Building images under namespace: %ns%
+          if "%DRY_RUN%"=="true" (
+            if "%services%"=="" (
+              echo [DRY RUN] Would build all services
+            ) else (
+              echo [DRY RUN] Would build services: %services%
+            )
+          ) else (
+            if "%services%"=="" (
+              echo No specific service changes detected; building all.
+              docker compose build --pull
+            ) else (
+              echo Building changed services: %services%
+              for %%i in (%services%) do docker compose build --pull %%i
+            )
+          )
         '''
       }
     }
     stage('Start Stack For Smoke Tests') {
+      when { expression { return params.RUN_TESTS } }
       steps {
         sh '''
           set -e
@@ -61,6 +117,7 @@ pipeline {
       }
     }
     stage('Health Checks') {
+      when { expression { return params.RUN_TESTS } }
       steps {
                 bat 'scripts\\wait_for_http.bat http://localhost:5000/health 60'
                 bat 'scripts\\wait_for_http.bat http://localhost:5001/health 60'
@@ -73,9 +130,15 @@ pipeline {
     stage('Login to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
-          sh '''
-            set -e
-            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          bat '''
+            echo Logging into Docker Hub as %DOCKERHUB_USERNAME%
+            if "%DRY_RUN%"=="true" (
+              echo [DRY RUN] Would docker login
+            ) else (
+              echo %DOCKERHUB_TOKEN%>tmp_pwd.txt
+              docker login -u "%DOCKERHUB_USERNAME%" --password-stdin < tmp_pwd.txt
+              del tmp_pwd.txt
+            )
           '''
         }
       }
@@ -85,13 +148,26 @@ pipeline {
                 bat '''
                   set ns=%DOCKERHUB_USER%
                   set tag=%IMAGE_TAG%
-                  set images=product_service user_service order_service payment_service notification_service frontend
-                  for %%i in (%images%) do docker tag %ns%/%%i:latest %ns%/%%i:%tag%
-                  docker compose push
-                  if not "%tag%"=="" (
-                    for %%i in (%images%) do docker push %ns%/%%i:%tag%
+                  set services=%CHANGED_SERVICES%
+                  if "%services%"=="" (
+                    set services=product_service user_service order_service payment_service notification_service frontend
+                  )
+                  if "%DRY_RUN%"=="true" (
+                    echo [DRY RUN] Would tag services: %services% with tag %tag%
+                    echo [DRY RUN] Would push latest for: %services%
+                    if not "%tag%"=="" echo [DRY RUN] Would also push tag %tag% for: %services%
                   ) else (
-                    echo Skipping tag push: IMAGE_TAG is empty
+                    for %%i in (%services%) do docker tag %ns%/%%i:latest %ns%/%%i:%tag%
+                    if "%services%"=="product_service user_service order_service payment_service notification_service frontend" (
+                      docker compose push
+                    ) else (
+                      for %%i in (%services%) do docker push %ns%/%%i:latest
+                    )
+                    if not "%tag%"=="" (
+                      for %%i in (%services%) do docker push %ns%/%%i:%tag%
+                    ) else (
+                      echo Skipping tag push: IMAGE_TAG is empty
+                    )
                   )
                 '''
       }
@@ -115,10 +191,13 @@ pipeline {
   post {
     always {
       script {
-        sh '''
-          set +e
-          docker compose down -v
-          docker logout || true
+        bat '''
+          if "%DRY_RUN%"=="true" (
+            echo [DRY RUN] Would docker compose down -v and docker logout
+          ) else (
+            docker compose down -v
+            docker logout
+          )
         '''
       }
     }
