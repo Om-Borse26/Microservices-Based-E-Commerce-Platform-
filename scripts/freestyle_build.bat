@@ -120,6 +120,10 @@ for %%s in (%SERVICES%) do (
   docker tag %NS%/%%s:latest %NS%/%%s:%TAG% || exit /b 1
   echo Tagging latest from %NS%/%%s:%TAG%
   docker tag %NS%/%%s:%TAG% %NS%/%%s:latest || exit /b 1
+  echo Image digest for %NS%/%%s:%TAG%:
+  docker inspect --format="{{.Id}}" %NS%/%%s:%TAG%
+  echo Image digest for %NS%/%%s:latest:
+  docker inspect --format="{{.Id}}" %NS%/%%s:latest
 )
 
 REM Push SHA first, then latest, so both reflect the same image
