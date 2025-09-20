@@ -17,9 +17,6 @@ services:
       retries: 10
 
   product_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.product
     image: ${DOCKERHUB_USER:-local}/product_service:latest
     environment:
       DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/productdb
@@ -31,9 +28,6 @@ services:
       - "5000:5000"
 
   user_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.user
     image: ${DOCKERHUB_USER:-local}/user_service:latest
     environment:
       DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/userdb
@@ -49,9 +43,6 @@ services:
       - "5001:5001"
 
   order_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.order
     image: ${DOCKERHUB_USER:-local}/order_service:latest
     environment:
       DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/orderdb
@@ -69,9 +60,6 @@ services:
       - "5002:5002"
 
   payment_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.payment
     image: ${DOCKERHUB_USER:-local}/payment_service:latest
     environment:
       DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/paymentdb
@@ -89,9 +77,6 @@ services:
       - "5003:5003"
 
   notification_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.notification
     image: ${DOCKERHUB_USER:-local}/notification_service:latest
     environment:
       DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/notificationdb
@@ -110,9 +95,6 @@ services:
       - "5005:5005"
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
     image: ${DOCKERHUB_USER:-local}/frontend:latest
     depends_on:
       product_service:
