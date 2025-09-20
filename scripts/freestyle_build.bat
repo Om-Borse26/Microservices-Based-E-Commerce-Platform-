@@ -85,19 +85,8 @@ if not "%SERVICES%"=="" (
   for /f "tokens=* delims= " %%s in ("%SERVICES%") do set "SERVICES=%%s"
 )
 
-REM Save changed services for deploy step (read by deploy_changed.bat)
-if "%SERVICES%"=="" (
-  > changed_services.txt echo ALL
-) else (
-  > changed_services.txt echo %SERVICES%
-)
-
 for /f "usebackq delims=" %%a in (`git rev-parse --short HEAD`) do set TAG=%%a
 echo Image tag (short SHA): %TAG%
-
-REM Save deploy info (namespace and tag) for deterministic rollout
-> deploy_info.txt echo NS=%NS%
->> deploy_info.txt echo TAG=%TAG%
 
 REM Build images
 if "%SERVICES%"=="" (
