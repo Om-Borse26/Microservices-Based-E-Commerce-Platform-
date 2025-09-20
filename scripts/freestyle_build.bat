@@ -19,6 +19,9 @@ if "%DOCKERHUB_USER%"=="" (
 )
 echo Using Docker Hub namespace: %NS%
 
+REM Ensure compose uses the same namespace for image names
+set "DOCKERHUB_USER=%NS%"
+
 echo Validating docker-compose.yml ...
 docker compose config -q || exit /b 1
 
@@ -109,9 +112,13 @@ del tmp_pwd.txt
 
 if "%SERVICES%"=="" set "SERVICES=product_service user_service order_service payment_service notification_service frontend"
 
+REM Tag flow: create SHA tag from latest, then make latest point to the SHA tag
 for %%s in (%SERVICES%) do docker tag %NS%/%%s:latest %NS%/%%s:%TAG% || exit /b 1
-for %%s in (%SERVICES%) do docker push %NS%/%%s:latest || exit /b 1
+for %%s in (%SERVICES%) do docker tag %NS%/%%s:%TAG% %NS%/%%s:latest || exit /b 1
+
+REM Push SHA first, then latest, so both reflect the same image
 for %%s in (%SERVICES%) do docker push %NS%/%%s:%TAG% || exit /b 1
+for %%s in (%SERVICES%) do docker push %NS%/%%s:latest || exit /b 1
 
 docker logout
 
