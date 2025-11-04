@@ -10,57 +10,69 @@ import os
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database via env var with fallback
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI',
-    'mysql+pymysql://root:Yog%40101619@localhost/paymentdb'
-)
+# ════════════════════════════════════════════════════════════════════════════════
+# DATABASE CONFIGURATION - RDS Connection
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Get database credentials from environment variables with RDS defaults
+DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_USER = os.getenv('DB_USER', 'admin')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
+DB_NAME = os.getenv('DB_NAME', 'paymentdb')
+
+# Build database URI
+DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ECHO'] = False
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices via env
+# ════════════════════════════════════════════════════════════════════════════════
+# MICROSERVICES CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════════
+
 ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://localhost:5002')
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5005')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5004')
 USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
 
-# Payment Model
+# ════════════════════════════════════════════════════════════════════════════════
+# PAYMENT MODEL - Maps to 'payments' table in paymentdb
+# ════════════════════════════════════════════════════════════════════════════════
+
 class Payment(db.Model):
+    __tablename__ = 'payments'  # Explicitly set table name
+    
     id = db.Column(db.Integer, primary_key=True)
-    payment_id = db.Column(db.String(100), unique=True, nullable=False)  # Unique payment identifier
-    order_id = db.Column(db.Integer, nullable=False)  # Reference to order service
-    user_id = db.Column(db.Integer, nullable=False)   # Reference to user service
-    amount = db.Column(db.Float, nullable=False)
-    currency = db.Column(db.String(10), default='INR')
-    payment_method = db.Column(db.String(50), nullable=False)  # card, upi, netbanking, wallet
-    payment_status = db.Column(db.String(50), default='pending')  # pending, processing, completed, failed, refunded
-    transaction_id = db.Column(db.String(100))  # External payment gateway transaction ID
-    gateway_response = db.Column(db.Text)  # Store gateway response
+    order_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)  # Changed from Float to Numeric
+    payment_method = db.Column(db.String(50), nullable=False)
+    payment_status = db.Column(db.String(50), default='pending')
+    transaction_id = db.Column(db.String(100), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    
-    # Card details (for demonstration - in real world, never store raw card data)
-    card_last_four = db.Column(db.String(4))
-    card_brand = db.Column(db.String(20))
     
     def to_dict(self):
         return {
             'id': self.id,
-            'payment_id': self.payment_id,
             'order_id': self.order_id,
             'user_id': self.user_id,
-            'amount': self.amount,
-            'currency': self.currency,
+            'amount': float(self.amount),  # Convert Decimal to float for JSON
             'payment_method': self.payment_method,
             'payment_status': self.payment_status,
             'transaction_id': self.transaction_id,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'card_last_four': self.card_last_four,
-            'card_brand': self.card_brand
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-# Helper functions
+# ════════════════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ════════════════════════════════════════════════════════════════════════════════
+
 def generate_payment_id():
     """Generate unique payment ID"""
     return f"PAY_{uuid.uuid4().hex[:12].upper()}"
@@ -71,9 +83,8 @@ def generate_transaction_id():
 
 def simulate_payment_gateway(payment_method, amount, card_details=None):
     """Simulate payment gateway processing"""
-    # Simulate processing time
     import time
-    time.sleep(1)
+    time.sleep(0.5)  # Reduced from 1 second
     
     # Simulate random success/failure (90% success rate)
     success_rate = 0.9
@@ -84,7 +95,7 @@ def simulate_payment_gateway(payment_method, amount, card_details=None):
             'status': 'success',
             'transaction_id': generate_transaction_id(),
             'message': 'Payment processed successfully',
-            'gateway_fee': round(amount * 0.02, 2)  # 2% gateway fee
+            'gateway_fee': round(float(amount) * 0.02, 2)  # 2% gateway fee
         }
     else:
         return {
@@ -100,16 +111,18 @@ def update_order_status(order_id, status):
         response = requests.put(
             f'{ORDER_SERVICE_URL}/orders/{order_id}/status',
             headers={'Content-Type': 'application/json'},
-            json={'status': status}
+            json={'status': status},
+            timeout=5
         )
         return response.status_code == 200
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"⚠️  Failed to update order status: {e}")
         return False
 
 def send_payment_notification(user_id, payment_data, order_id):
     """Send payment notification via notification service"""
     try:
-        # First, try to get user email from user service
+        # Try to get user details from user service
         user_email = None
         user_name = "Customer"
         
@@ -124,20 +137,14 @@ def send_payment_notification(user_id, payment_data, order_id):
         
         notification_data = {
             'user_id': user_id,
-            'type': 'email',
+            'type': 'payment',
             'category': 'payment_confirmation',
             'title': f'Payment Confirmation - Order #{order_id}',
             'message': f"Payment of ₹{payment_data['amount']} for Order #{order_id} has been {payment_data['payment_status']}",
-            'payment_id': payment_data['payment_id'],
-            'order_id': order_id,
-            'amount': payment_data['amount'],
-            'payment_status': payment_data['payment_status'],
-            'payment_method': payment_data['payment_method'],
-            'transaction_id': payment_data.get('transaction_id', 'N/A'),
-            'username': user_name
+            'delivery_method': 'email',
+            'status': 'pending'
         }
         
-        # Include email if we got it from user service
         if user_email:
             notification_data['email'] = user_email
         
@@ -149,23 +156,36 @@ def send_payment_notification(user_id, payment_data, order_id):
         )
         
         if response.status_code in [200, 201]:
-            print(f"✅ Payment notification sent successfully for payment {payment_data['payment_id']}")
+            print(f"✅ Payment notification sent successfully")
             return True
         else:
             print(f"⚠️  Payment notification failed with status {response.status_code}")
-            print(f"⚠️  Response: {response.text}")
             return False
             
     except requests.RequestException as e:
         print(f"❌ Payment notification failed: {str(e)}")
         return False
 
-# Routes
+# ════════════════════════════════════════════════════════════════════════════════
+# API ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for monitoring"""
-    return jsonify({'status': 'healthy', 'service': 'payment_service'}), 200
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'disconnected: {str(e)}'
+    
+    return jsonify({
+        'status': 'healthy',
+        'service': 'payment_service',
+        'database': db_status,
+        'db_name': DB_NAME,
+        'db_host': DB_HOST
+    }), 200
 
 @app.route('/payments', methods=['POST'])
 def process_payment():
@@ -178,25 +198,6 @@ def process_payment():
         if not data or not all(field in data for field in required_fields):
             return jsonify({'error': 'Missing required fields: order_id, user_id, amount, payment_method'}), 400
         
-        # Create payment record
-        payment = Payment(
-            payment_id=generate_payment_id(),
-            order_id=data['order_id'],
-            user_id=data['user_id'],
-            amount=data['amount'],
-            payment_method=data['payment_method'],
-            payment_status='processing'
-        )
-        
-        # Handle card details if provided
-        if data['payment_method'] == 'card' and 'card_details' in data:
-            card_details = data['card_details']
-            payment.card_last_four = card_details.get('number', '')[-4:] if card_details.get('number') else None
-            payment.card_brand = card_details.get('brand', 'Unknown')
-        
-        db.session.add(payment)
-        db.session.flush()  # Get the payment ID
-        
         # Process payment through gateway
         gateway_response = simulate_payment_gateway(
             data['payment_method'], 
@@ -204,21 +205,21 @@ def process_payment():
             data.get('card_details')
         )
         
-        # Update payment based on gateway response
-        payment.gateway_response = str(gateway_response)
-        payment.transaction_id = gateway_response.get('transaction_id')
+        # Create payment record
+        payment = Payment(
+            order_id=data['order_id'],
+            user_id=data['user_id'],
+            amount=data['amount'],
+            payment_method=data['payment_method'],
+            payment_status='completed' if gateway_response['status'] == 'success' else 'failed',
+            transaction_id=gateway_response.get('transaction_id')
+        )
         
-        if gateway_response['status'] == 'success':
-            payment.payment_status = 'completed'
-            order_status = 'confirmed'
-        else:
-            payment.payment_status = 'failed'
-            order_status = 'pending'
-        
-        payment.updated_at = datetime.datetime.utcnow()
+        db.session.add(payment)
         db.session.commit()
         
         # Update order status
+        order_status = 'confirmed' if payment.payment_status == 'completed' else 'pending'
         update_order_status(payment.order_id, order_status)
         
         # Send notification
@@ -233,11 +234,11 @@ def process_payment():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/<payment_id>', methods=['GET'])
+@app.route('/payments/<int:payment_id>', methods=['GET'])
 def get_payment(payment_id):
     """Get payment details"""
     try:
-        payment = Payment.query.filter_by(payment_id=payment_id).first_or_404()
+        payment = Payment.query.get_or_404(payment_id)
         return jsonify(payment.to_dict()), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 404
@@ -260,11 +261,11 @@ def get_payments_by_user(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/<payment_id>/refund', methods=['POST'])
+@app.route('/payments/<int:payment_id>/refund', methods=['POST'])
 def refund_payment(payment_id):
     """Process payment refund"""
     try:
-        payment = Payment.query.filter_by(payment_id=payment_id).first_or_404()
+        payment = Payment.query.get_or_404(payment_id)
         
         if payment.payment_status != 'completed':
             return jsonify({'error': 'Only completed payments can be refunded'}), 400
@@ -299,26 +300,17 @@ def refund_payment(payment_id):
 def get_all_payments():
     """Get all payments (admin endpoint)"""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
         status = request.args.get('status')
         
         query = Payment.query
         if status:
             query = query.filter_by(payment_status=status)
         
-        payments = query.order_by(Payment.created_at.desc()).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
+        payments = query.order_by(Payment.created_at.desc()).all()
         
         return jsonify({
-            'payments': [payment.to_dict() for payment in payments.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': payments.total,
-                'pages': payments.pages
-            }
+            'payments': [payment.to_dict() for payment in payments],
+            'count': len(payments)
         }), 200
         
     except Exception as e:
@@ -338,11 +330,15 @@ def get_payment_stats():
             'completed_payments': completed_payments,
             'failed_payments': failed_payments,
             'success_rate': round((completed_payments / total_payments * 100) if total_payments > 0 else 0, 2),
-            'total_revenue': total_amount
+            'total_revenue': float(total_amount)
         }), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ════════════════════════════════════════════════════════════════════════════════
+# FRONTEND SERVING ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/frontend/<path:path>')
 def serve_frontend(path):
@@ -352,9 +348,31 @@ def serve_frontend(path):
 def home():
     return send_from_directory('frontend', 'index.html')
 
+# ════════════════════════════════════════════════════════════════════════════════
+# APPLICATION STARTUP
+# ════════════════════════════════════════════════════════════════════════════════
+
 if __name__ == '__main__':
+    print("="*80)
+    print("PAYMENT SERVICE STARTING")
+    print("="*80)
+    print(f"Database: {DB_NAME}")
+    print(f"Host:     {DB_HOST}")
+    print(f"Port:     5003")
+    print("="*80)
+    print(f"Order Service:        {ORDER_SERVICE_URL}")
+    print(f"User Service:         {USER_SERVICE_URL}")
+    print(f"Notification Service: {NOTIFICATION_SERVICE_URL}")
+    print("="*80)
+    
     with app.app_context():
-        db.create_all()
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            print("✅ Database connection successful!")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            print("⚠️  Service will start but may not function properly")
+    
     port = int(os.getenv('PORT', 5003))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     app.run(debug=debug, host='0.0.0.0', port=port)

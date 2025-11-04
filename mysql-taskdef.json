@@ -1,0 +1,42 @@
+{
+    "memory":  "1024",
+    "executionRoleArn":  "arn:aws:iam::852048987212:role/ecsTaskExecutionRole",
+    "family":  "mysql-db",
+    "networkMode":  "awsvpc",
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "containerDefinitions":  [
+                                 {
+                                     "name":  "mysql",
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-region":  "us-east-1",
+                                                                              "awslogs-stream-prefix":  "ecs",
+                                                                              "awslogs-create-group":  "true",
+                                                                              "awslogs-group":  "/ecs/mysql-db"
+                                                                          }
+                                                          },
+                                     "environment":  [
+                                                         {
+                                                             "value":  "Yog@101619",
+                                                             "name":  "MYSQL_ROOT_PASSWORD"
+                                                         },
+                                                         {
+                                                             "value":  "shopease",
+                                                             "name":  "MYSQL_DATABASE"
+                                                         }
+                                                     ],
+                                     "essential":  true,
+                                     "image":  "mysql:8.0",
+                                     "portMappings":  [
+                                                          {
+                                                              "protocol":  "tcp",
+                                                              "containerPort":  3306
+                                                          }
+                                                      ]
+                                 }
+                             ],
+    "cpu":  "512"
+}

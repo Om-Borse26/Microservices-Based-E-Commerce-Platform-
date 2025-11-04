@@ -5,26 +5,44 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
 import os
+import requests
 from functools import wraps
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# Configure Database and Secrets via environment variables (with sensible defaults)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI',
-    'mysql+pymysql://root:Yog%40101619@localhost/userdb'
-)
+# ════════════════════════════════════════════════════════════════════════════════
+# DATABASE CONFIGURATION - RDS Connection
+# ════════════════════════════════════════════════════════════════════════════════
+
+DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_USER = os.getenv('DB_USER', 'admin')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
+DB_NAME = os.getenv('DB_NAME', 'userdb')
+
+DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
+app.config['SQLALCHEMY_ECHO'] = False
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production-12345')
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5005')
+# ════════════════════════════════════════════════════════════════════════════════
+# MICROSERVICES CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════════
 
-# User Model
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5004')
+
+# ════════════════════════════════════════════════════════════════════════════════
+# USER MODEL - Maps to 'users' table in userdb
+# ════════════════════════════════════════════════════════════════════════════════
+
 class User(db.Model):
+    __tablename__ = 'users'
+    
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -47,11 +65,14 @@ class User(db.Model):
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
-            'created_at': self.created_at.isoformat(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
             'is_active': self.is_active
         }
 
-# Authentication decorator
+# ════════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION DECORATOR
+# ════════════════════════════════════════════════════════════════════════════════
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -74,15 +95,30 @@ def token_required(f):
     
     return decorated
 
-# Routes
+# ════════════════════════════════════════════════════════════════════════════════
+# API ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint for monitoring"""
-    return jsonify({'status': 'healthy', 'service': 'user_service'}), 200
+    """Health check endpoint"""
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'disconnected: {str(e)}'
+    
+    return jsonify({
+        'status': 'healthy',
+        'service': 'user_service',
+        'database': db_status,
+        'db_name': DB_NAME,
+        'db_host': DB_HOST
+    }), 200
 
 @app.route('/register', methods=['POST'])
 def register():
+    """Register a new user"""
     try:
         data = request.get_json()
         
@@ -111,7 +147,6 @@ def register():
         
         # Send welcome email notification
         try:
-            import requests
             notification_data = {
                 'user_id': user.id,
                 'type': 'email',
@@ -124,20 +159,19 @@ def register():
                 'last_name': user.last_name
             }
             
-            # Call notification service
             response = requests.post(
                 f"{NOTIFICATION_SERVICE_URL}/notifications",
                 json=notification_data,
                 timeout=10
             )
+            
             if response.status_code in [200, 201]:
-                print(f"✅ Welcome email notification sent successfully for user {user.username}")
+                print(f"✅ Welcome email sent successfully for user {user.username}")
             else:
-                print(f"⚠️  Welcome email notification failed with status {response.status_code}")
+                print(f"⚠️  Welcome email failed with status {response.status_code}")
                 
         except Exception as email_error:
-            # Don't fail registration if email fails
-            print(f"❌ Welcome email failed: {email_error}")
+            print(f"⚠️  Welcome email failed: {email_error}")
         
         return jsonify({
             'message': 'User registered successfully',
@@ -150,6 +184,7 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
+    """User login"""
     try:
         data = request.get_json()
         
@@ -188,6 +223,7 @@ def get_user_by_id(user_id):
 @app.route('/profile', methods=['GET'])
 @token_required
 def get_profile(current_user_id):
+    """Get current user profile"""
     try:
         user = User.query.get_or_404(current_user_id)
         return jsonify(user.to_dict()), 200
@@ -197,6 +233,7 @@ def get_profile(current_user_id):
 @app.route('/profile', methods=['PUT'])
 @token_required
 def update_profile(current_user_id):
+    """Update current user profile"""
     try:
         user = User.query.get_or_404(current_user_id)
         data = request.get_json()
@@ -223,12 +260,16 @@ def update_profile(current_user_id):
 
 @app.route('/users', methods=['GET'])
 def get_users():
-    """Admin endpoint to get all users"""
+    """Get all users (admin endpoint)"""
     try:
         users = User.query.all()
         return jsonify([user.to_dict() for user in users]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ════════════════════════════════════════════════════════════════════════════════
+# FRONTEND SERVING ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/frontend/<path:path>')
 def serve_frontend(path):
@@ -238,9 +279,29 @@ def serve_frontend(path):
 def home():
     return send_from_directory('frontend', 'index.html')
 
+# ════════════════════════════════════════════════════════════════════════════════
+# APPLICATION STARTUP
+# ════════════════════════════════════════════════════════════════════════════════
+
 if __name__ == '__main__':
+    print("="*80)
+    print("USER SERVICE STARTING")
+    print("="*80)
+    print(f"Database: {DB_NAME}")
+    print(f"Host:     {DB_HOST}")
+    print(f"Port:     5001")
+    print("="*80)
+    print(f"Notification Service: {NOTIFICATION_SERVICE_URL}")
+    print("="*80)
+    
     with app.app_context():
-        db.create_all()
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            print("✅ Database connection successful!")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            print("⚠️  Service will start but may not function properly")
+    
     port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     app.run(debug=debug, host='0.0.0.0', port=port)

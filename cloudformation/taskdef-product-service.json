@@ -1,4 +1,4 @@
-﻿{
+{
     "memory":  "512",
     "executionRoleArn":  "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
     "family":  "product-service",

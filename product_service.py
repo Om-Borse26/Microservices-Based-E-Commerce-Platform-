@@ -1,176 +1,179 @@
-from flask import Flask, request, jsonify, abort, send_from_directory
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import os
+from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# Configure Database via env var with fallback
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI',
-    'mysql+pymysql://root:Yog%40101619@localhost/productdb'
-)
+# Database Configuration
+DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_USER = os.getenv('DB_USER', 'admin')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
+DB_NAME = os.getenv('DB_NAME', 'productdb')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ECHO'] = True
 
 db = SQLAlchemy(app)
 
 # Product Model
 class Product(db.Model):
+    __tablename__ = 'products'
+    
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(255))
-    price = db.Column(db.Float, nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    category = db.Column(db.String(100))
     stock = db.Column(db.Integer, default=0)
-
+    image_url = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'description': self.description,
-            'price': self.price,
-            'stock': self.stock
+            'price': float(self.price),
+            'category': self.category,
+            'stock': self.stock,
+            'image_url': self.image_url,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-# Routes
-
+# Health check
 @app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint for monitoring"""
-    return jsonify({'status': 'healthy', 'service': 'product_service'}), 200
+def health():
+    try:
+        # Test database connection
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({
+            'status': 'healthy',
+            'service': 'product-service',
+            'database': 'connected',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'service': 'product-service',
+            'database': 'disconnected',
+            'error': str(e)
+        }), 503
 
+# Get all products
 @app.route('/products', methods=['GET'])
 def get_products():
     try:
-        products = Product.query.all()
-        return jsonify([p.to_dict() for p in products]), 200
+        category = request.args.get('category')
+        
+        if category:
+            products = Product.query.filter_by(category=category).all()
+        else:
+            products = Product.query.all()
+        
+        return jsonify({
+            'products': [product.to_dict() for product in products],
+            'count': len(products)
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/products/<int:id>', methods=['GET'])
-def get_product(id):
+# Get product by ID
+@app.route('/products/<int:product_id>', methods=['GET'])
+def get_product(product_id):
     try:
-        product = Product.query.get_or_404(id)
+        product = Product.query.get_or_404(product_id)
         return jsonify(product.to_dict()), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
+# Create product
 @app.route('/products', methods=['POST'])
-def add_product():
+def create_product():
     try:
         data = request.get_json()
-        if not data or not data.get('name') or not data.get('price'):
-            return jsonify({'error': 'Name and Price are required'}), 400
         
         product = Product(
             name=data['name'],
-            description=data.get('description', ''),
+            description=data.get('description'),
             price=data['price'],
-            stock=data.get('stock', 0)
+            category=data.get('category'),
+            stock=data.get('stock', 0),
+            image_url=data.get('image_url')
         )
+        
         db.session.add(product)
         db.session.commit()
-        return jsonify(product.to_dict()), 201
+        
+        return jsonify({
+            'message': 'Product created successfully',
+            'product': product.to_dict()
+        }), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 400
 
-@app.route('/products/<int:id>', methods=['PUT'])
-def update_product(id):
-    product = Product.query.get_or_404(id)
-    data = request.get_json()
-    product.name = data.get('name', product.name)
-    product.description = data.get('description', product.description)
-    product.price = data.get('price', product.price)
-    product.stock = data.get('stock', product.stock)
-    db.session.commit()
-    return jsonify(product.to_dict()), 200
-
-@app.route('/products/<int:id>', methods=['DELETE'])
-def delete_product(id):
-    product = Product.query.get_or_404(id)
-    db.session.delete(product)
-    db.session.commit()
-    return '', 204
-
-@app.route('/init-data', methods=['POST'])
-def init_sample_data():
-    """Initialize database with sample products"""
+# Update product
+@app.route('/products/<int:product_id>', methods=['PUT'])
+def update_product(product_id):
     try:
-        # Check if products already exist
-        if Product.query.count() > 0:
-            return jsonify({'message': 'Sample data already exists'}), 200
+        product = Product.query.get_or_404(product_id)
+        data = request.get_json()
         
-        sample_products = [
-            {
-                'name': 'Laptop',
-                'description': 'High-performance laptop for work and gaming',
-                'price': 75000.00,
-                'stock': 10
-            },
-            {
-                'name': 'Smartphone',
-                'description': 'Latest smartphone with advanced features',
-                'price': 25000.00,
-                'stock': 25
-            },
-            {
-                'name': 'Headphones',
-                'description': 'Wireless noise-cancelling headphones',
-                'price': 5000.00,
-                'stock': 50
-            },
-            {
-                'name': 'Tablet',
-                'description': '10-inch tablet perfect for reading and browsing',
-                'price': 20000.00,
-                'stock': 15
-            },
-            {
-                'name': 'Smart Watch',
-                'description': 'Fitness tracking smartwatch with heart rate monitor',
-                'price': 8000.00,
-                'stock': 30
-            }
-        ]
-        
-        for product_data in sample_products:
-            product = Product(
-                name=product_data['name'],
-                description=product_data['description'],
-                price=product_data['price'],
-                stock=product_data['stock']
-            )
-            db.session.add(product)
+        product.name = data.get('name', product.name)
+        product.description = data.get('description', product.description)
+        product.price = data.get('price', product.price)
+        product.category = data.get('category', product.category)
+        product.stock = data.get('stock', product.stock)
+        product.image_url = data.get('image_url', product.image_url)
+        product.updated_at = datetime.utcnow()
         
         db.session.commit()
-        return jsonify({'message': 'Sample data created successfully'}), 201
         
+        return jsonify({
+            'message': 'Product updated successfully',
+            'product': product.to_dict()
+        }), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 400
 
-@app.route('/frontend/<path:path>')
-def serve_frontend(path):
-    return send_from_directory('frontend', path)
-
-@app.route('/style.css')
-def serve_css():
-    return send_from_directory('frontend', 'style.css')
-
-@app.route('/script.js')
-def serve_js():
-    return send_from_directory('frontend', 'script.js')
-
-@app.route('/')
-def home():
-    return send_from_directory('frontend', 'index.html')
+# Delete product
+@app.route('/products/<int:product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    try:
+        product = Product.query.get_or_404(product_id)
+        db.session.delete(product)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Product deleted successfully'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':
+    print("="*80)
+    print("PRODUCT SERVICE STARTING")
+    print("="*80)
+    print(f"Database: {DB_NAME} @ {DB_HOST}")
+    print(f"Port: 5000")
+    print("="*80)
+    
     with app.app_context():
-        db.create_all()
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    app.run(debug=debug, host='0.0.0.0', port=port)
-
-# Test Jenkins build
+        try:
+            # Test connection
+            db.session.execute(db.text('SELECT 1'))
+            print("✅ Database connection successful!")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)

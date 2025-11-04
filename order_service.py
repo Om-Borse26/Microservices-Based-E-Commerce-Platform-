@@ -8,85 +8,129 @@ import os
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure Database via env var with fallback
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI',
-    'mysql+pymysql://root:Yog%40101619@localhost/orderdb'
-)
+# ════════════════════════════════════════════════════════════════════════════════
+# DATABASE CONFIGURATION - RDS Connection
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Get database credentials from environment variables with RDS defaults
+DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_USER = os.getenv('DB_USER', 'admin')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
+DB_NAME = os.getenv('DB_NAME', 'orderdb')
+
+# Build database URI
+DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ECHO'] = False
 
 db = SQLAlchemy(app)
 
-# Configuration for other microservices via env
+# ════════════════════════════════════════════════════════════════════════════════
+# MICROSERVICES CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════════
+
 PRODUCT_SERVICE_URL = os.getenv('PRODUCT_SERVICE_URL', 'http://localhost:5000')
 USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
 
-# Order Model
+# ════════════════════════════════════════════════════════════════════════════════
+# ORDER MODELS - Maps to 'orders' and 'order_items' tables in orderdb
+# ════════════════════════════════════════════════════════════════════════════════
+
 class Order(db.Model):
+    __tablename__ = 'orders'  # Explicitly set table name
+    
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, nullable=False)  # Reference to user service
-    total_amount = db.Column(db.Float, nullable=False)
-    status = db.Column(db.String(50), default='pending')  # pending, confirmed, shipped, delivered, cancelled
+    user_id = db.Column(db.Integer, nullable=False)
+    total_amount = db.Column(db.Numeric(10, 2), nullable=False)  # Changed from Float to Numeric
+    status = db.Column(db.String(50), default='pending')
+    payment_status = db.Column(db.String(50), default='pending')  # Added from RDS schema
+    shipping_address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    shipping_address = db.Column(db.Text)
     
     def to_dict(self):
         return {
             'id': self.id,
             'user_id': self.user_id,
-            'total_amount': self.total_amount,
+            'total_amount': float(self.total_amount),  # Convert Decimal to float for JSON
             'status': self.status,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'shipping_address': self.shipping_address
+            'payment_status': self.payment_status,
+            'shipping_address': self.shipping_address,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-# Order Item Model
 class OrderItem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
-    product_id = db.Column(db.Integer, nullable=False)  # Reference to product service
-    quantity = db.Column(db.Integer, nullable=False)
-    unit_price = db.Column(db.Float, nullable=False)
-    total_price = db.Column(db.Float, nullable=False)
+    __tablename__ = 'order_items'  # Explicitly set table name
     
-    order = db.relationship('Order', backref=db.backref('items', lazy=True))
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
+    product_id = db.Column(db.Integer, nullable=False)
+    product_name = db.Column(db.String(200))  # Added from RDS schema
+    quantity = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Numeric(10, 2), nullable=False)  # Changed from unit_price, Float to Numeric
+    subtotal = db.Column(db.Numeric(10, 2), nullable=False)  # Changed from total_price
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)  # Added from RDS schema
+    
+    order = db.relationship('Order', backref=db.backref('items', lazy=True, cascade='all, delete-orphan'))
     
     def to_dict(self):
         return {
             'id': self.id,
             'order_id': self.order_id,
             'product_id': self.product_id,
+            'product_name': self.product_name,
             'quantity': self.quantity,
-            'unit_price': self.unit_price,
-            'total_price': self.total_price
+            'price': float(self.price),  # Convert Decimal to float
+            'subtotal': float(self.subtotal)
         }
 
-# Helper functions
+# ════════════════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ════════════════════════════════════════════════════════════════════════════════
+
 def get_product_details(product_id):
     """Fetch product details from product service"""
     try:
-        response = requests.get(f'{PRODUCT_SERVICE_URL}/products/{product_id}')
+        response = requests.get(f'{PRODUCT_SERVICE_URL}/products/{product_id}', timeout=5)
         if response.status_code == 200:
             return response.json()
         return None
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"⚠️  Failed to get product {product_id}: {e}")
         return None
 
 def validate_stock(product_id, quantity):
     """Check if product has sufficient stock"""
     product = get_product_details(product_id)
-    if product and product['stock'] >= quantity:
+    if product and product.get('stock', 0) >= quantity:
         return True
     return False
 
-# Routes
+# ════════════════════════════════════════════════════════════════════════════════
+# API ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for monitoring"""
-    return jsonify({'status': 'healthy', 'service': 'order_service'}), 200
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'disconnected: {str(e)}'
+    
+    return jsonify({
+        'status': 'healthy',
+        'service': 'order_service',
+        'database': db_status,
+        'db_name': DB_NAME,
+        'db_host': DB_HOST
+    }), 200
 
 @app.route('/orders', methods=['POST'])
 def create_order():
@@ -117,9 +161,10 @@ def create_order():
             
             validated_items.append({
                 'product_id': item['product_id'],
+                'product_name': product['name'],
                 'quantity': item['quantity'],
-                'unit_price': product['price'],
-                'total_price': item_total
+                'price': product['price'],
+                'subtotal': item_total
             })
         
         # Create order
@@ -137,9 +182,10 @@ def create_order():
             order_item = OrderItem(
                 order_id=order.id,
                 product_id=item_data['product_id'],
+                product_name=item_data['product_name'],
                 quantity=item_data['quantity'],
-                unit_price=item_data['unit_price'],
-                total_price=item_data['total_price']
+                price=item_data['price'],
+                subtotal=item_data['subtotal']
             )
             db.session.add(order_item)
         
@@ -168,7 +214,7 @@ def get_order(order_id):
             product = get_product_details(item['product_id'])
             if product:
                 item['product_name'] = product['name']
-                item['product_description'] = product['description']
+                item['product_description'] = product.get('description', '')
         
         return jsonify(order_dict), 200
     except Exception as e:
@@ -205,6 +251,11 @@ def update_order_status(order_id):
             return jsonify({'error': f'Status must be one of: {valid_statuses}'}), 400
         
         order.status = data['status']
+        
+        # Update payment_status if provided
+        if 'payment_status' in data:
+            order.payment_status = data['payment_status']
+        
         order.updated_at = datetime.datetime.utcnow()
         
         db.session.commit()
@@ -219,27 +270,23 @@ def update_order_status(order_id):
 def get_all_orders():
     """Get all orders (admin endpoint)"""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+        status = request.args.get('status')
         
-        orders = Order.query.order_by(Order.created_at.desc()).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
+        query = Order.query
+        if status:
+            query = query.filter_by(status=status)
+        
+        orders = query.order_by(Order.created_at.desc()).all()
         
         result = []
-        for order in orders.items:
+        for order in orders:
             order_dict = order.to_dict()
             order_dict['items'] = [item.to_dict() for item in order.items]
             result.append(order_dict)
         
         return jsonify({
             'orders': result,
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': orders.total,
-                'pages': orders.pages
-            }
+            'count': len(result)
         }), 200
         
     except Exception as e:
@@ -265,6 +312,10 @@ def cancel_order(order_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+# ════════════════════════════════════════════════════════════════════════════════
+# FRONTEND SERVING ROUTES
+# ════════════════════════════════════════════════════════════════════════════════
+
 @app.route('/frontend/<path:path>')
 def serve_frontend(path):
     return send_from_directory('frontend', path)
@@ -273,9 +324,30 @@ def serve_frontend(path):
 def home():
     return send_from_directory('frontend', 'index.html')
 
+# ════════════════════════════════════════════════════════════════════════════════
+# APPLICATION STARTUP
+# ════════════════════════════════════════════════════════════════════════════════
+
 if __name__ == '__main__':
+    print("="*80)
+    print("ORDER SERVICE STARTING")
+    print("="*80)
+    print(f"Database: {DB_NAME}")
+    print(f"Host:     {DB_HOST}")
+    print(f"Port:     5002")
+    print("="*80)
+    print(f"Product Service: {PRODUCT_SERVICE_URL}")
+    print(f"User Service:    {USER_SERVICE_URL}")
+    print("="*80)
+    
     with app.app_context():
-        db.create_all()
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            print("✅ Database connection successful!")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            print("⚠️  Service will start but may not function properly")
+    
     port = int(os.getenv('PORT', 5002))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     app.run(debug=debug, host='0.0.0.0', port=port)

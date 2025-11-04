@@ -1,0 +1,43 @@
+﻿# ════════════════════════════════════════════════════════
+# ShopEase RDS Connection Details
+# Generated: 2025-11-05 03:13:28
+# ════════════════════════════════════════════════════════
+
+# Basic Connection Info
+DB_HOST=shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com
+DB_PORT=3306
+DB_NAME=shopeasedb
+DB_USER=admin
+DB_PASSWORD=Yog101619Admin
+MYSQL_VERSION=8.0.43
+
+# ════════════════════════════════════════════════════════
+# Connection Strings for Python/SQLAlchemy
+# ════════════════════════════════════════════════════════
+
+# Main database
+DATABASE_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/shopeasedb
+
+# Individual service databases (will be created by schema script)
+PRODUCT_DB_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/productdb
+USER_DB_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/userdb
+ORDER_DB_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/orderdb
+PAYMENT_DB_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/paymentdb
+NOTIFICATION_DB_URI=mysql+pymysql://admin:Yog101619Admin@shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com:3306/notificationdb
+
+# ════════════════════════════════════════════════════════
+# Environment Variables for Docker/ECS
+# ════════════════════════════════════════════════════════
+
+# Copy these to your task definitions or .env file
+# DB_HOST=shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com
+# DB_PORT=3306
+# DB_USER=admin
+# DB_PASSWORD=Yog101619Admin
+
+cat > create-rds-schemas.sql << 'EOF'
+-- Paste your entire SQL schema here
+CREATE DATABASE IF NOT EXISTS productdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE productdb;
+-- ... rest of your SQL
+EOF

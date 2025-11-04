@@ -1,4 +1,4 @@
-﻿{
+{
     "memory":  "512",
     "executionRoleArn":  "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
     "family":  "notification-service",
@@ -35,7 +35,7 @@
                                                              "name":  "DB_NAME"
                                                          },
                                                          {
-                                                             "value":  "5004",
+                                                             "value":  "5005",
                                                              "name":  "PORT"
                                                          }
                                                      ],
@@ -44,7 +44,7 @@
                                      "portMappings":  [
                                                           {
                                                               "protocol":  "tcp",
-                                                              "containerPort":  5004
+                                                              "containerPort":  5005
                                                           }
                                                       ]
                                  }
