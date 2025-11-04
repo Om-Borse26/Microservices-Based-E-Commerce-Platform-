@@ -6,6 +6,17 @@ REM ╚════════════════════════�
 REM Add AWS CLI to PATH
 set PATH=%PATH%;E:\Other Downloaded Apps\AWS CLI\CLI Setup
 
+REM Configure AWS credentials from Jenkins environment variables
+if "%AWS_ACCESS_KEY_ID%"=="" (
+    echo ⚠️  AWS credentials not found in Jenkins environment
+    echo Using local AWS credentials...
+) else (
+    echo ✅ Using AWS credentials from Jenkins
+    aws configure set aws_access_key_id %AWS_ACCESS_KEY_ID%
+    aws configure set aws_secret_access_key %AWS_SECRET_ACCESS_KEY%
+    aws configure set region us-east-1
+)
+
 setlocal enabledelayedexpansion
 
 set AWS_REGION=us-east-1
@@ -17,6 +28,14 @@ echo ═════════════════════════
 echo   🔍 Detecting Changed Microservices...
 echo ════════════════════════════════════════════════════════
 echo.
+
+REM Verify AWS credentials work
+aws sts get-caller-identity >nul 2>&1
+if !ERRORLEVEL! NEQ 0 (
+    echo ❌ AWS credentials are invalid or not configured!
+    exit /b 1
+)
+echo ✅ AWS credentials validated
 
 REM Check what changed in last commit
 git diff --name-only HEAD~1 HEAD > changed_files.txt
