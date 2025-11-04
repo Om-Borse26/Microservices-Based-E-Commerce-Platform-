@@ -197,7 +197,7 @@ echo ═════════════════════════
 echo   🔨 STAGE 2B: BUILD IMAGE
 echo ════════════════════════════════════════════════════════
 
-echo [1/4] Building Docker image locally...
+echo [1/5] Building Docker image locally...
 if "%SERVICE_TYPE%"=="microservice" (
     docker build -t %LOCAL_IMAGE% -f microservices\%SERVICE_NAME%\Dockerfile microservices\%SERVICE_NAME%
 ) else (
@@ -209,7 +209,7 @@ if !ERRORLEVEL! NEQ 0 (
 )
 echo ✅ Local image built: %LOCAL_IMAGE%
 
-echo [2/4] Tagging image for ECR...
+echo [2/5] Tagging image for ECR...
 docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ TAG FAILED: %SERVICE_NAME%
@@ -217,25 +217,46 @@ if !ERRORLEVEL! NEQ 0 (
 )
 echo ✅ Image tagged: %ECR_REPO%:latest
 
-echo [3/4] Logging into ECR...
+echo [3/5] Logging into ECR...
+set LOGIN_RETRY=0
+:ECR_LOGIN_RETRY
+set /a LOGIN_RETRY+=1
 for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
-echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
+echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ ECR LOGIN FAILED
+    if !LOGIN_RETRY! LSS 3 (
+        echo ⚠️  ECR login failed, retrying... (Attempt !LOGIN_RETRY!/3)
+        timeout /t 5 /nobreak >nul
+        goto ECR_LOGIN_RETRY
+    )
+    echo ❌ ECR LOGIN FAILED after 3 attempts
     exit /b 1
 )
 echo ✅ Logged into ECR
 
-echo [4/4] Pushing to ECR...
+echo [4/5] Pushing to ECR with retry...
+set PUSH_RETRY=0
+:PUSH_RETRY_LABEL
+set /a PUSH_RETRY+=1
 docker push %ECR_REPO%:latest
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ PUSH FAILED: %SERVICE_NAME%
+    if !PUSH_RETRY! LSS 3 (
+        echo ⚠️  Push failed, retrying in 10 seconds... (Attempt !PUSH_RETRY!/3)
+        timeout /t 10 /nobreak >nul
+        REM Re-login to ECR before retry
+        for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
+        echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
+        goto PUSH_RETRY_LABEL
+    )
+    echo ❌ PUSH FAILED after 3 attempts: %SERVICE_NAME%
+    echo ℹ️  Try restarting Docker Desktop and running again
     exit /b 1
 )
 echo ✅ Image pushed to ECR
 
-REM Cleanup local image to save space
+echo [5/5] Cleaning up local images...
 docker rmi %LOCAL_IMAGE% >nul 2>&1
+echo ✅ Cleanup complete
 
 echo.
 echo ✅✅✅ %SERVICE_NAME% BUILT AND PUSHED SUCCESSFULLY! ✅✅✅
