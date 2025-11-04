@@ -1,0 +1,29 @@
+{
+  "family": "add-products",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "mysql-client",
+      "image": "mysql:8.0",
+      "essential": true,
+      "command": [
+        "sh",
+        "-c",
+        "mysql -h shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com -u admin -pShopEase2025!SecureDB shopease_db -e \"INSERT INTO products (name, description, price, stock, category, image_url) VALUES ('MacBook Pro 16', 'Apple M3 Max 36GB RAM', 2999.99, 15, 'Electronics', 'https://picsum.photos/300/300?1'), ('iPhone 15 Pro', '256GB Titanium', 1199.99, 50, 'Electronics', 'https://picsum.photos/300/300?2'), ('iPad Air', '11-inch 256GB', 749.99, 30, 'Electronics', 'https://picsum.photos/300/300?3'), ('Samsung Galaxy S24', '512GB Black', 1299.99, 25, 'Electronics', 'https://picsum.photos/300/300?4'), ('Dell XPS 15', 'Intel i9 32GB RAM', 2299.99, 10, 'Electronics', 'https://picsum.photos/300/300?5'), ('Sony WH-1000XM5', 'Noise-Cancelling Headphones', 399.99, 75, 'Audio', 'https://picsum.photos/300/300?6'), ('AirPods Pro 2', 'USB-C Spatial Audio', 249.99, 100, 'Audio', 'https://picsum.photos/300/300?7'), ('Bose QuietComfort', 'Bluetooth Headphones', 329.99, 60, 'Audio', 'https://picsum.photos/300/300?8'), ('JBL Flip 6', 'Bluetooth Speaker', 129.99, 120, 'Audio', 'https://picsum.photos/300/300?9'), ('Dell UltraSharp 27', '4K USB-C Monitor', 649.99, 30, 'Monitors', 'https://picsum.photos/300/300?10'), ('LG 34 UltraWide', 'Curved Gaming 144Hz', 899.99, 20, 'Monitors', 'https://picsum.photos/300/300?11'), ('Samsung Odyssey G7', '32 inch 4K 240Hz', 1199.99, 15, 'Monitors', 'https://picsum.photos/300/300?12'), ('Logitech MX Master 3S', 'Wireless Mouse', 99.99, 100, 'Accessories', 'https://picsum.photos/300/300?13'), ('Keychron K8 Pro', 'Mechanical Keyboard', 119.99, 80, 'Accessories', 'https://picsum.photos/300/300?14'), ('Apple Magic Trackpad', 'Multi-Touch Surface', 149.99, 50, 'Accessories', 'https://picsum.photos/300/300?15'), ('Anker PowerBank', '20000mAh Fast Charging', 59.99, 150, 'Accessories', 'https://picsum.photos/300/300?16'), ('PlayStation 5', '1TB Console', 499.99, 25, 'Gaming', 'https://picsum.photos/300/300?17'), ('Xbox Series X', '1TB Console', 499.99, 20, 'Gaming', 'https://picsum.photos/300/300?18'), ('Nintendo Switch OLED', 'Neon Red Blue', 349.99, 40, 'Gaming', 'https://picsum.photos/300/300?19'), ('Steam Deck', '512GB Handheld', 649.99, 15, 'Gaming', 'https://picsum.photos/300/300?20'), ('Amazon Echo Dot', 'Smart Speaker Alexa', 49.99, 200, 'Smart Home', 'https://picsum.photos/300/300?21'), ('Google Nest Hub', '7 inch Smart Display', 99.99, 100, 'Smart Home', 'https://picsum.photos/300/300?22'), ('Philips Hue Kit', 'Smart LED 4-Pack', 89.99, 75, 'Smart Home', 'https://picsum.photos/300/300?23'), ('Ring Video Doorbell', '1080p HD Night Vision', 99.99, 60, 'Smart Home', 'https://picsum.photos/300/300?24'), ('Apple Watch Series 9', 'GPS 45mm Starlight', 429.99, 45, 'Wearables', 'https://picsum.photos/300/300?25');\" && echo 'Products added!' && mysql -h shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com -u admin -pShopEase2025!SecureDB shopease_db -e 'SELECT COUNT(*) as total FROM products;' && sleep 30"
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-create-group": "true",
+          "awslogs-group": "/ecs/shopease",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "add-products"
+        }
+      }
+    }
+  ]
+}

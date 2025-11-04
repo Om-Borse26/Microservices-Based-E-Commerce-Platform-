@@ -1,0 +1,53 @@
+﻿{
+    "memory":  "512",
+    "executionRoleArn":  "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+    "family":  "product-service",
+    "networkMode":  "awsvpc",
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "containerDefinitions":  [
+                                 {
+                                     "name":  "product-service",
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-region":  "us-east-1",
+                                                                              "awslogs-stream-prefix":  "product-service",
+                                                                              "awslogs-group":  "/ecs/shopease"
+                                                                          }
+                                                          },
+                                     "environment":  [
+                                                         {
+                                                             "value":  "shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com",
+                                                             "name":  "DB_HOST"
+                                                         },
+                                                         {
+                                                             "value":  "admin",
+                                                             "name":  "DB_USER"
+                                                         },
+                                                         {
+                                                             "value":  "ShopEase2025!SecureDB",
+                                                             "name":  "DB_PASSWORD"
+                                                         },
+                                                         {
+                                                             "value":  "product_db",
+                                                             "name":  "DB_NAME"
+                                                         },
+                                                         {
+                                                             "value":  "5000",
+                                                             "name":  "PORT"
+                                                         }
+                                                     ],
+                                     "essential":  true,
+                                     "image":  "852048987212.dkr.ecr.us-east-1.amazonaws.com/product_service:latest",
+                                     "portMappings":  [
+                                                          {
+                                                              "protocol":  "tcp",
+                                                              "containerPort":  5000
+                                                          }
+                                                      ]
+                                 }
+                             ],
+    "cpu":  "256"
+}

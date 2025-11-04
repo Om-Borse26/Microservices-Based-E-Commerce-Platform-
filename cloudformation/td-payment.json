@@ -1,0 +1,31 @@
+{
+  "family": "payment-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "payment-service",
+      "image": "852048987212.dkr.ecr.us-east-1.amazonaws.com/payment_service:latest",
+      "essential": true,
+      "portMappings": [{"containerPort": 5003, "protocol": "tcp"}],
+      "environment": [
+        {"name": "DB_HOST", "value": "shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com"},
+        {"name": "DB_USER", "value": "admin"},
+        {"name": "DB_PASSWORD", "value": "ShopEase2025!SecureDB"},
+        {"name": "DB_NAME", "value": "payment_db"},
+        {"name": "PORT", "value": "5003"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shopease",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "payment-service"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "family": "frontend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "frontend",
+      "image": "852048987212.dkr.ecr.us-east-1.amazonaws.com/frontend:latest",
+      "essential": true,
+      "portMappings": [{"containerPort": 80, "protocol": "tcp"}],
+      "environment": [
+        {"name": "API_URL", "value": "http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shopease",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "frontend"
+        }
+      }
+    }
+  ]
+}

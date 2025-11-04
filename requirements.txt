@@ -1,0 +1,21 @@
+# Flask and related dependencies
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+Flask-CORS==4.0.0
+
+# Database drivers
+PyMySQL==1.1.0
+cryptography==41.0.7
+
+# Authentication and security
+PyJWT==2.8.0
+Werkzeug==2.3.7
+
+# HTTP requests for microservice communication
+requests==2.31.0
+
+# Email and notifications
+secure-smtplib==0.1.1
+
+# Other utilities
+python-dotenv==1.0.0

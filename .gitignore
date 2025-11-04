@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environments
+.env
+.env.*
+venv/
+.envrc
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Node/Nginx build artifacts (if any)
+dist/
+node_modules/
+
+# Docker
+*.log
+
+# AWS Credentials
+*.csv
+*accessKeys*
+*.pem
+*.key

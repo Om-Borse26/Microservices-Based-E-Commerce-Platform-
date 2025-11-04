@@ -1,0 +1,53 @@
+﻿{
+    "memory":  "512",
+    "executionRoleArn":  "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+    "family":  "notification-service",
+    "networkMode":  "awsvpc",
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "containerDefinitions":  [
+                                 {
+                                     "name":  "notification-service",
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-region":  "us-east-1",
+                                                                              "awslogs-stream-prefix":  "notification-service",
+                                                                              "awslogs-group":  "/ecs/shopease"
+                                                                          }
+                                                          },
+                                     "environment":  [
+                                                         {
+                                                             "value":  "shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com",
+                                                             "name":  "DB_HOST"
+                                                         },
+                                                         {
+                                                             "value":  "admin",
+                                                             "name":  "DB_USER"
+                                                         },
+                                                         {
+                                                             "value":  "ShopEase2025!SecureDB",
+                                                             "name":  "DB_PASSWORD"
+                                                         },
+                                                         {
+                                                             "value":  "notification_db",
+                                                             "name":  "DB_NAME"
+                                                         },
+                                                         {
+                                                             "value":  "5004",
+                                                             "name":  "PORT"
+                                                         }
+                                                     ],
+                                     "essential":  true,
+                                     "image":  "852048987212.dkr.ecr.us-east-1.amazonaws.com/notification_service:latest",
+                                     "portMappings":  [
+                                                          {
+                                                              "protocol":  "tcp",
+                                                              "containerPort":  5004
+                                                          }
+                                                      ]
+                                 }
+                             ],
+    "cpu":  "256"
+}

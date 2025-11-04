@@ -1,0 +1,114 @@
+
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "13307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./setup_databases.sql:/docker-entrypoint-initdb.d/setup_databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  product_service:
+    image: ${DOCKERHUB_USER:-local}/product_service:latest
+    environment:
+      DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/productdb
+      PORT: 5000
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+
+  user_service:
+    image: ${DOCKERHUB_USER:-local}/user_service:latest
+    environment:
+      DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/userdb
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      NOTIFICATION_SERVICE_URL: http://notification_service:5005
+      PORT: 5001
+    depends_on:
+      mysql:
+        condition: service_healthy
+      notification_service:
+        condition: service_started
+    ports:
+      - "5001:5001"
+
+  order_service:
+    image: ${DOCKERHUB_USER:-local}/order_service:latest
+    environment:
+      DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/orderdb
+      PRODUCT_SERVICE_URL: http://product_service:5000
+      USER_SERVICE_URL: http://user_service:5001
+      PORT: 5002
+    depends_on:
+      mysql:
+        condition: service_healthy
+      product_service:
+        condition: service_started
+      user_service:
+        condition: service_started
+    ports:
+      - "5002:5002"
+
+  payment_service:
+    image: ${DOCKERHUB_USER:-local}/payment_service:latest
+    environment:
+      DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/paymentdb
+      ORDER_SERVICE_URL: http://order_service:5002
+      NOTIFICATION_SERVICE_URL: http://notification_service:5005
+      PORT: 5003
+    depends_on:
+      mysql:
+        condition: service_healthy
+      order_service:
+        condition: service_started
+      notification_service:
+        condition: service_started
+    ports:
+      - "5003:5003"
+
+  notification_service:
+    image: ${DOCKERHUB_USER:-local}/notification_service:latest
+    environment:
+      DATABASE_URI: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql/notificationdb
+      USER_SERVICE_URL: http://user_service:5001
+      ENABLE_REAL_EMAIL_SENDING: ${ENABLE_REAL_EMAIL_SENDING:-False}
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-your-email@gmail.com}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      FROM_NAME: ${FROM_NAME:-ShopEase E-Commerce}
+      PORT: 5005
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "5005:5005"
+
+  frontend:
+    image: ${DOCKERHUB_USER:-local}/frontend:latest
+    depends_on:
+      product_service:
+        condition: service_started
+      user_service:
+        condition: service_started
+      order_service:
+        condition: service_started
+      payment_service:
+        condition: service_started
+      notification_service:
+        condition: service_started
+    ports:
+      - "8081:80"
+
+volumes:
+  db_data:
