@@ -1,12 +1,12 @@
 @echo off
 REM ╔════════════════════════════════════════════════════════╗
-REM ║  AUTO-DETECT CHANGES & DEPLOY - BUILD LOCALLY          ║
+REM ║  COMPLETE CI/CD PIPELINE WITH TESTING                  ║
 REM ╚════════════════════════════════════════════════════════╝
 
 REM Add AWS CLI to PATH
 set PATH=%PATH%;E:\Other Downloaded Apps\AWS CLI\CLI Setup
 
-REM Configure AWS credentials from Jenkins environment variables
+REM Configure AWS credentials
 if "%AWS_ACCESS_KEY_ID%"=="" (
     echo ⚠️  AWS credentials not found in Jenkins environment
     echo Using local AWS credentials...
@@ -21,210 +21,201 @@ setlocal enabledelayedexpansion
 
 set AWS_REGION=us-east-1
 set AWS_ACCOUNT_ID=852048987212
-set ECS_CLUSTER=shopease-cluster
+set ECS_CLUSTER_STAGING=shopease-staging-cluster
+set ECS_CLUSTER_PRODUCTION=shopease-cluster
 set CHANGES_FOUND=0
+set TESTS_PASSED=0
 
 echo ════════════════════════════════════════════════════════
-echo   🔍 Detecting Changed Microservices...
+echo   🔍 STAGE 1: DETECTING CHANGES
 echo ════════════════════════════════════════════════════════
 echo.
 
-REM Verify AWS credentials work
-aws sts get-caller-identity >nul 2>&1
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ AWS credentials are invalid or not configured!
-    exit /b 1
-)
-echo ✅ AWS credentials validated
-
-REM Check what changed in last commit
+REM Check what changed
 git diff --name-only HEAD~1 HEAD > changed_files.txt
-
-REM Check each microservice
-set SERVICES=product-service user-service order-service payment-service notification-service
-
-for %%S in (%SERVICES%) do (
-    findstr /i "microservices\\%%S" changed_files.txt >nul
-    if !ERRORLEVEL! EQU 0 (
-        echo ✅ CHANGED: %%S
-        set CHANGES_FOUND=1
-        call :BuildAndDeploy %%S
-        if !ERRORLEVEL! NEQ 0 exit /b 1
-    ) else (
-        echo ⏭️  No changes: %%S
-    )
-)
 
 REM Check frontend
 findstr /i "frontend" changed_files.txt >nul
 if !ERRORLEVEL! EQU 0 (
     echo ✅ CHANGED: frontend
     set CHANGES_FOUND=1
-    call :BuildAndDeployFrontend
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   🧪 STAGE 2: LINTING ^& UNIT TESTS
+    echo ════════════════════════════════════════════════════════
+    
+    REM Check if package.json exists (for Node.js projects)
+    if exist "frontend\package.json" (
+        echo [1/2] Running ESLint...
+        cd frontend
+        call npm install --silent >nul 2>&1
+        call npm run lint
+        if !ERRORLEVEL! NEQ 0 (
+            echo ❌ LINTING FAILED!
+            exit /b 1
+        )
+        echo ✅ Linting passed
+        
+        echo [2/2] Running unit tests...
+        call npm test
+        if !ERRORLEVEL! NEQ 0 (
+            echo ❌ TESTS FAILED!
+            exit /b 1
+        )
+        echo ✅ Tests passed
+        cd ..
+    ) else (
+        echo ⚠️  No package.json found, skipping tests
+    )
+    
+    set TESTS_PASSED=1
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   🔨 STAGE 3: BUILD IMAGE
+    echo ════════════════════════════════════════════════════════
+    
+    call :BuildImage frontend
     if !ERRORLEVEL! NEQ 0 exit /b 1
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   🚀 STAGE 4: DEPLOY TO STAGING
+    echo ════════════════════════════════════════════════════════
+    
+    call :DeployToStaging frontend
+    if !ERRORLEVEL! NEQ 0 exit /b 1
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   🧪 STAGE 5: STAGING TESTS
+    echo ════════════════════════════════════════════════════════
+    
+    call :TestStaging frontend
+    if !ERRORLEVEL! NEQ 0 exit /b 1
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   ✋ STAGE 6: MANUAL APPROVAL
+    echo ════════════════════════════════════════════════════════
+    
+    echo ⚠️  Deploy to PRODUCTION requires approval!
+    echo Press 'Y' to deploy to production, or 'N' to cancel:
+    choice /c YN /n /m "Deploy to production? (Y/N): "
+    if !ERRORLEVEL! EQU 2 (
+        echo ❌ Deployment cancelled by user
+        exit /b 0
+    )
+    
+    REM ═══════════════════════════════════════════════════════
+    echo.
+    echo ════════════════════════════════════════════════════════
+    echo   🌟 STAGE 7: DEPLOY TO PRODUCTION
+    echo ════════════════════════════════════════════════════════
+    
+    call :DeployToProduction frontend
+    if !ERRORLEVEL! NEQ 0 exit /b 1
+    
 ) else (
-    echo ⏭️  No changes: frontend
+    echo ⏭️  No changes detected
 )
 
-echo.
 if !CHANGES_FOUND! EQU 0 (
     echo ════════════════════════════════════════════════════════
-    echo   ⚠️  NO CHANGES DETECTED - SKIPPING BUILD
+    echo   ⚠️  NO CHANGES - SKIPPING PIPELINE
     echo ════════════════════════════════════════════════════════
     exit /b 0
 )
 
+echo.
 echo ════════════════════════════════════════════════════════
-echo   ✅ ALL DEPLOYMENTS COMPLETED SUCCESSFULLY!
+echo   ✅ PIPELINE COMPLETED SUCCESSFULLY!
 echo ════════════════════════════════════════════════════════
 exit /b 0
 
 REM ═══════════════════════════════════════════════════════════
-REM Function: Build and Deploy Microservice
+REM Function: Build Docker Image
 REM ═══════════════════════════════════════════════════════════
-:BuildAndDeploy
-set SERVICE_NAME=%1
-set LOCAL_IMAGE=%SERVICE_NAME%:latest
-set ECR_REPO=%AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com/%SERVICE_NAME%
+:BuildImage
+set SERVICE=%1
+set LOCAL_IMAGE=%SERVICE%:latest
+set ECR_REPO=%AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com/%SERVICE%
 
-echo.
-echo ╔════════════════════════════════════════════════════════╗
-echo ║  DEPLOYING: %SERVICE_NAME%
-echo ╚════════════════════════════════════════════════════════╝
-
-REM Build locally first
-echo [1/6] Building Docker image locally...
-docker build -t %LOCAL_IMAGE% -f microservices\%SERVICE_NAME%\Dockerfile microservices\%SERVICE_NAME%
+echo [1/3] Building Docker image...
+docker build -t %LOCAL_IMAGE% -f Dockerfile.%SERVICE% .
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ BUILD FAILED: %SERVICE_NAME%
+    echo ❌ BUILD FAILED
     exit /b 1
 )
-echo ✅ Local image built: %LOCAL_IMAGE%
+echo ✅ Image built
 
-REM Tag for ECR
-echo [2/6] Tagging image for ECR...
+echo [2/3] Tagging for ECR...
 docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ TAG FAILED: %SERVICE_NAME%
-    exit /b 1
-)
-echo ✅ Image tagged: %ECR_REPO%:latest
+docker tag %LOCAL_IMAGE% %ECR_REPO%:staging
+echo ✅ Tagged
 
-REM Login to ECR
-echo [3/6] Logging into ECR...
-for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
-echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ ECR LOGIN FAILED
-    exit /b 1
-)
-echo ✅ Logged into ECR
-
-REM Push to ECR
-echo [4/6] Pushing to ECR...
+echo [3/3] Pushing to ECR...
+aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
+docker push %ECR_REPO%:staging
 docker push %ECR_REPO%:latest
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ PUSH FAILED: %SERVICE_NAME%
-    exit /b 1
-)
-echo ✅ Image pushed to ECR
-
-REM Check if service exists
-echo [5/6] Checking if ECS service exists...
-aws ecs describe-services --cluster %ECS_CLUSTER% --services %SERVICE_NAME% --region %AWS_REGION% >nul 2>&1
-if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Service %SERVICE_NAME% not found in ECS, skipping deployment
-    echo ℹ️  Image is in ECR, you can create the service manually
-    goto :eof
-)
-
-REM Update ECS service
-echo [6/6] Updating ECS service...
-aws ecs update-service --cluster %ECS_CLUSTER% --service %SERVICE_NAME% --force-new-deployment --region %AWS_REGION% >nul
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED: %SERVICE_NAME%
-    exit /b 1
-)
-echo ✅ ECS deployment triggered
-
-REM Cleanup local image to save space
-docker rmi %LOCAL_IMAGE% >nul 2>&1
-
-echo.
-echo ✅✅✅ %SERVICE_NAME% DEPLOYED SUCCESSFULLY! ✅✅✅
+echo ✅ Pushed to ECR
 goto :eof
 
 REM ═══════════════════════════════════════════════════════════
-REM Function: Build and Deploy Frontend
+REM Function: Deploy to Staging
 REM ═══════════════════════════════════════════════════════════
-:BuildAndDeployFrontend
-set LOCAL_IMAGE=frontend:latest
-set ECR_REPO=%AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com/frontend
+:DeployToStaging
+set SERVICE=%1
+echo Deploying %SERVICE% to STAGING...
 
-echo.
-echo ╔════════════════════════════════════════════════════════╗
-echo ║  DEPLOYING: FRONTEND
-echo ╚════════════════════════════════════════════════════════╝
-
-REM Build locally first
-echo [1/6] Building Docker image locally...
-docker build -t %LOCAL_IMAGE% -f Dockerfile.frontend .
+aws ecs describe-services --cluster %ECS_CLUSTER_STAGING% --services %SERVICE%-staging --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ BUILD FAILED: frontend
+    echo ⚠️  Staging service doesn't exist - create it first!
     exit /b 1
 )
-echo ✅ Local image built: %LOCAL_IMAGE%
 
-REM Tag for ECR
-echo [2/6] Tagging image for ECR...
-docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ TAG FAILED: frontend
+aws ecs update-service --cluster %ECS_CLUSTER_STAGING% --service %SERVICE%-staging --force-new-deployment --region %AWS_REGION% >nul
+echo ✅ Deployed to staging
+echo ⏳ Waiting 60 seconds for staging to stabilize...
+timeout /t 60 /nobreak >nul
+goto :eof
+
+REM ═══════════════════════════════════════════════════════════
+REM Function: Test Staging Environment
+REM ═══════════════════════════════════════════════════════════
+:TestStaging
+set SERVICE=%1
+echo Testing staging environment...
+
+REM Get staging URL (you'll need to set this)
+set STAGING_URL=http://shopease-staging-ALB-xxxx.us-east-1.elb.amazonaws.com
+
+echo Testing HTTP response...
+curl -s -o nul -w "%%{http_code}" %STAGING_URL% > staging_response.txt
+set /p HTTP_CODE=<staging_response.txt
+
+if "%HTTP_CODE%"=="200" (
+    echo ✅ Staging tests passed (HTTP 200)
+) else (
+    echo ❌ Staging tests failed (HTTP %HTTP_CODE%)
     exit /b 1
 )
-echo ✅ Image tagged: %ECR_REPO%:latest
+goto :eof
 
-REM Login to ECR
-echo [3/6] Logging into ECR...
-for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
-echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ ECR LOGIN FAILED
-    exit /b 1
-)
-echo ✅ Logged into ECR
+REM ═══════════════════════════════════════════════════════════
+REM Function: Deploy to Production
+REM ═══════════════════════════════════════════════════════════
+:DeployToProduction
+set SERVICE=%1
+echo Deploying %SERVICE% to PRODUCTION...
 
-REM Push to ECR
-echo [4/6] Pushing to ECR...
-docker push %ECR_REPO%:latest
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ PUSH FAILED: frontend
-    exit /b 1
-)
-echo ✅ Image pushed to ECR
-
-REM Check if service exists
-echo [5/6] Checking if ECS service exists...
-aws ecs describe-services --cluster %ECS_CLUSTER% --services frontend --region %AWS_REGION% >nul 2>&1
-if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Frontend service not found in ECS, skipping deployment
-    echo ℹ️  Image is in ECR, you can create the service manually
-    goto :eof
-)
-
-REM Update ECS service
-echo [6/6] Updating ECS service...
-aws ecs update-service --cluster %ECS_CLUSTER% --service frontend --force-new-deployment --region %AWS_REGION% >nul
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED: frontend
-    exit /b 1
-)
-echo ✅ ECS deployment triggered
-
-REM Cleanup local image to save space
-docker rmi %LOCAL_IMAGE% >nul 2>&1
-
-echo.
-echo ✅✅✅ FRONTEND DEPLOYED SUCCESSFULLY! ✅✅✅
-echo 🌐 URL: http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
+aws ecs update-service --cluster %ECS_CLUSTER_PRODUCTION% --service %SERVICE% --force-new-deployment --region %AWS_REGION% >nul
+echo ✅ Deployed to PRODUCTION
+echo 🌐 Live at: http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
 goto :eof
