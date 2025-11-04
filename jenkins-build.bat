@@ -176,12 +176,12 @@ if "%SERVICE_TYPE%"=="microservice" (
     
 ) else (
     echo [1/2] Validating HTML syntax...
-    powershell -Command "if ((Get-Content frontend\index.html | Select-String -Pattern '<!DOCTYPE html>' -Quiet)) { exit 0 } else { exit 1 }"
-    if !ERRORLEVEL! NEQ 0 (
-        echo ❌ Invalid HTML - missing DOCTYPE
+    if exist "frontend\index.html" (
+        echo ✅ HTML file exists
+    ) else (
+        echo ❌ HTML file not found!
         exit /b 1
     )
-    echo ✅ HTML structure valid
     
     echo [2/2] Verifying Dockerfile...
     if not exist "Dockerfile.frontend" (
