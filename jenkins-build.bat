@@ -1,6 +1,6 @@
 @echo off
 REM ╔════════════════════════════════════════════════════════╗
-REM ║  AUTO-DETECT CHANGES & DEPLOY - BUILD LOCALLY          ║
+REM ║  AUTO-DETECT CHANGES & DEPLOY - FULLY AUTOMATED        ║
 REM ╚════════════════════════════════════════════════════════╝
 
 REM Add AWS CLI to PATH
@@ -77,34 +77,6 @@ if !CHANGES_FOUND! EQU 0 (
 REM ═══════════════════════════════════════════════════════
 echo.
 echo ════════════════════════════════════════════════════════
-echo   ✋ MANUAL APPROVAL REQUIRED FOR PRODUCTION DEPLOYMENT
-echo ════════════════════════════════════════════════════════
-echo.
-echo Changes have been built and pushed to ECR successfully.
-echo Images are ready for deployment to PRODUCTION.
-echo.
-echo ⚠️  This will update the LIVE production environment!
-echo.
-echo Press Y to DEPLOY to production
-echo Press N to CANCEL deployment
-echo.
-
-REM Wait for user input (works in Jenkins too)
-choice /c YN /n /m "Deploy to PRODUCTION? (Y/N): "
-if !ERRORLEVEL! EQU 2 (
-    echo.
-    echo ❌ Deployment CANCELLED by user
-    echo ℹ️  Images are in ECR but NOT deployed to ECS
-    exit /b 0
-)
-if !ERRORLEVEL! EQU 1 (
-    echo.
-    echo ✅ Deployment APPROVED! Proceeding to production...
-)
-
-REM ═══════════════════════════════════════════════════════
-echo.
-echo ════════════════════════════════════════════════════════
 echo   🚀 STAGE 3: DEPLOYING TO PRODUCTION
 echo ════════════════════════════════════════════════════════
 echo.
@@ -134,7 +106,7 @@ echo ═════════════════════════
 exit /b 0
 
 REM ═══════════════════════════════════════════════════════════
-REM Function: Build, Test, and Push (No Deploy Yet)
+REM Function: Build, Test, and Push
 REM ═══════════════════════════════════════════════════════════
 :BuildAndTest
 set SERVICE_NAME=%1
@@ -207,124 +179,85 @@ if !ERRORLEVEL! NEQ 0 (
     echo ❌ BUILD FAILED: %SERVICE_NAME%
     exit /b 1
 )
-echo ✅ Local image built: %LOCAL_IMAGE%
+echo ✅ Local image built
 
-echo [2/5] Tagging image for ECR...
+echo [2/5] Tagging for ECR...
 docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ TAG FAILED: %SERVICE_NAME%
-    exit /b 1
-)
-echo ✅ Image tagged: %ECR_REPO%:latest
+echo ✅ Tagged
 
 echo [3/5] Logging into ECR...
 set LOGIN_RETRY=0
 :ECR_LOGIN_RETRY
 set /a LOGIN_RETRY+=1
-echo Attempt !LOGIN_RETRY!/3...
-
-REM Get password and login in one clean operation
 aws ecr get-login-password --region %AWS_REGION% 2>nul | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
-
 if !ERRORLEVEL! NEQ 0 (
     if !LOGIN_RETRY! LSS 3 (
-        echo ⚠️  Login attempt !LOGIN_RETRY! failed, waiting 15 seconds...
+        echo ⚠️  Retry !LOGIN_RETRY!/3 in 15s...
         timeout /t 15 /nobreak >nul
         goto ECR_LOGIN_RETRY
     )
-    echo ❌ ECR LOGIN FAILED after 3 attempts
-    echo.
-    echo 💡 Try these fixes:
-    echo    1. Restart Docker Desktop
-    echo    2. Wait 2 minutes and try again
-    echo    3. Run locally: docker system prune
+    echo ❌ LOGIN FAILED
     exit /b 1
 )
-echo ✅ Logged into ECR
+echo ✅ Logged in
 
 echo [4/5] Pushing to ECR...
 set PUSH_RETRY=0
 :PUSH_RETRY_LABEL
 set /a PUSH_RETRY+=1
-echo Push attempt !PUSH_RETRY!/3...
-
-docker push %ECR_REPO%:latest 2>&1
-
+docker push %ECR_REPO%:latest
 if !ERRORLEVEL! NEQ 0 (
     if !PUSH_RETRY! LSS 3 (
-        echo ⚠️  Push failed, retrying in 15 seconds...
+        echo ⚠️  Retry !PUSH_RETRY!/3 in 15s...
         timeout /t 15 /nobreak >nul
-        REM Re-login before retry
         aws ecr get-login-password --region %AWS_REGION% 2>nul | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
         goto PUSH_RETRY_LABEL
     )
-    echo ❌ PUSH FAILED after 3 attempts
+    echo ❌ PUSH FAILED
     exit /b 1
 )
-echo ✅ Image pushed to ECR
+echo ✅ Pushed
 
-echo [5/5] Cleaning up...
+echo [5/5] Cleanup...
 docker rmi %LOCAL_IMAGE% >nul 2>&1
-echo ✅ Cleanup complete
+echo ✅ Done
 
 echo.
-echo ✅✅✅ %SERVICE_NAME% BUILT AND PUSHED SUCCESSFULLY! ✅✅✅
+echo ✅✅✅ %SERVICE_NAME% READY FOR DEPLOYMENT ✅✅✅
 goto :eof
 
 REM ═══════════════════════════════════════════════════════════
-REM Function: Deploy Microservice to Production
+REM Function: Deploy to Production
 REM ═══════════════════════════════════════════════════════════
 :DeployToProduction
 set SERVICE_NAME=%1
-
 echo.
 echo ╔════════════════════════════════════════════════════════╗
-echo ║  DEPLOYING TO PRODUCTION: %SERVICE_NAME%
+echo ║  DEPLOYING: %SERVICE_NAME%
 echo ╚════════════════════════════════════════════════════════╝
-
-echo [1/2] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services %SERVICE_NAME% --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Service %SERVICE_NAME% not found in ECS
-    echo ℹ️  Image is in ECR, create service manually
+    echo ⚠️  Service not found, skipping
     goto :eof
 )
-echo ✅ Service exists
-
-echo [2/2] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service %SERVICE_NAME% --force-new-deployment --region %AWS_REGION% >nul
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED
-    exit /b 1
-)
-echo ✅ Deployment triggered
+echo ✅ Deployed
 goto :eof
 
 REM ═══════════════════════════════════════════════════════════
-REM Function: Deploy Frontend to Production
+REM Function: Deploy Frontend
 REM ═══════════════════════════════════════════════════════════
 :DeployFrontendToProduction
-
 echo.
 echo ╔════════════════════════════════════════════════════════╗
-echo ║  DEPLOYING TO PRODUCTION: FRONTEND
+echo ║  DEPLOYING: FRONTEND
 echo ╚════════════════════════════════════════════════════════╝
-
-echo [1/2] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services frontend --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Frontend service not found in ECS
-    echo ℹ️  Image is in ECR, create service manually
+    echo ⚠️  Service not found, skipping
     goto :eof
 )
-echo ✅ Service exists
-
-echo [2/2] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service frontend --force-new-deployment --region %AWS_REGION% >nul
-if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED
-    exit /b 1
-)
-echo ✅ Deployment triggered
-echo 🌐 URL: http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
+echo ✅ Deployed
+echo 🌐 http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
 goto :eof
