@@ -3,6 +3,9 @@ REM ╔════════════════════════�
 REM ║  AUTO-DETECT CHANGES & DEPLOY - BUILD LOCALLY          ║
 REM ╚════════════════════════════════════════════════════════╝
 
+REM Add AWS CLI to PATH
+set PATH=%PATH%;E:\Other Downloaded Apps\AWS CLI\CLI Setup
+
 setlocal enabledelayedexpansion
 
 set AWS_REGION=us-east-1
