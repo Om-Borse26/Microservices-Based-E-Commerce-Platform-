@@ -238,7 +238,7 @@ REM Cleanup local image to save space
 docker rmi %LOCAL_IMAGE% >nul 2>&1
 
 echo.
-echo ✅✅✅ %SERVICE_NAME% BUILT & PUSHED SUCCESSFULLY! ✅✅✅
+echo ✅✅✅ %SERVICE_NAME% BUILT AND PUSHED SUCCESSFULLY! ✅✅✅
 goto :eof
 
 REM ═══════════════════════════════════════════════════════════
