@@ -221,40 +221,49 @@ echo [3/5] Logging into ECR...
 set LOGIN_RETRY=0
 :ECR_LOGIN_RETRY
 set /a LOGIN_RETRY+=1
-for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
-echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
+echo Attempt !LOGIN_RETRY!/3...
+
+REM Get password and login in one clean operation
+aws ecr get-login-password --region %AWS_REGION% 2>nul | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
+
 if !ERRORLEVEL! NEQ 0 (
     if !LOGIN_RETRY! LSS 3 (
-        echo ⚠️  ECR login failed, retrying... (Attempt !LOGIN_RETRY!/3)
-        timeout /t 5 /nobreak >nul
+        echo ⚠️  Login attempt !LOGIN_RETRY! failed, waiting 15 seconds...
+        timeout /t 15 /nobreak >nul
         goto ECR_LOGIN_RETRY
     )
     echo ❌ ECR LOGIN FAILED after 3 attempts
+    echo.
+    echo 💡 Try these fixes:
+    echo    1. Restart Docker Desktop
+    echo    2. Wait 2 minutes and try again
+    echo    3. Run locally: docker system prune
     exit /b 1
 )
 echo ✅ Logged into ECR
 
-echo [4/5] Pushing to ECR with retry...
+echo [4/5] Pushing to ECR...
 set PUSH_RETRY=0
 :PUSH_RETRY_LABEL
 set /a PUSH_RETRY+=1
-docker push %ECR_REPO%:latest
+echo Push attempt !PUSH_RETRY!/3...
+
+docker push %ECR_REPO%:latest 2>&1
+
 if !ERRORLEVEL! NEQ 0 (
     if !PUSH_RETRY! LSS 3 (
-        echo ⚠️  Push failed, retrying in 10 seconds... (Attempt !PUSH_RETRY!/3)
-        timeout /t 10 /nobreak >nul
-        REM Re-login to ECR before retry
-        for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
-        echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
+        echo ⚠️  Push failed, retrying in 15 seconds...
+        timeout /t 15 /nobreak >nul
+        REM Re-login before retry
+        aws ecr get-login-password --region %AWS_REGION% 2>nul | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com >nul 2>&1
         goto PUSH_RETRY_LABEL
     )
-    echo ❌ PUSH FAILED after 3 attempts: %SERVICE_NAME%
-    echo ℹ️  Try restarting Docker Desktop and running again
+    echo ❌ PUSH FAILED after 3 attempts
     exit /b 1
 )
 echo ✅ Image pushed to ECR
 
-echo [5/5] Cleaning up local images...
+echo [5/5] Cleaning up...
 docker rmi %LOCAL_IMAGE% >nul 2>&1
 echo ✅ Cleanup complete
 
@@ -276,8 +285,8 @@ echo ╚════════════════════════
 echo [1/2] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services %SERVICE_NAME% --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Service %SERVICE_NAME% not found in ECS, skipping deployment
-    echo ℹ️  Image is in ECR, you can create the service manually
+    echo ⚠️  Service %SERVICE_NAME% not found in ECS
+    echo ℹ️  Image is in ECR, create service manually
     goto :eof
 )
 echo ✅ Service exists
@@ -285,11 +294,10 @@ echo ✅ Service exists
 echo [2/2] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service %SERVICE_NAME% --force-new-deployment --region %AWS_REGION% >nul
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED: %SERVICE_NAME%
+    echo ❌ DEPLOYMENT FAILED
     exit /b 1
 )
-echo ✅ ECS deployment triggered for %SERVICE_NAME%
-echo ⏳ Service will update in 2-3 minutes
+echo ✅ Deployment triggered
 goto :eof
 
 REM ═══════════════════════════════════════════════════════════
@@ -305,8 +313,8 @@ echo ╚════════════════════════
 echo [1/2] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services frontend --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Frontend service not found in ECS, skipping deployment
-    echo ℹ️  Image is in ECR, you can create the service manually
+    echo ⚠️  Frontend service not found in ECS
+    echo ℹ️  Image is in ECR, create service manually
     goto :eof
 )
 echo ✅ Service exists
@@ -314,10 +322,9 @@ echo ✅ Service exists
 echo [2/2] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service frontend --force-new-deployment --region %AWS_REGION% >nul
 if !ERRORLEVEL! NEQ 0 (
-    echo ❌ DEPLOYMENT FAILED: frontend
+    echo ❌ DEPLOYMENT FAILED
     exit /b 1
 )
-echo ✅ ECS deployment triggered for frontend
-echo ⏳ Website will update in 2-3 minutes
+echo ✅ Deployment triggered
 echo 🌐 URL: http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
 goto :eof
