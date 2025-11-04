@@ -1,6 +1,6 @@
 @echo off
 REM ╔════════════════════════════════════════════════════════╗
-REM ║  AUTO-DETECT CHANGES & DEPLOY - SINGLE JOB             ║
+REM ║  AUTO-DETECT CHANGES & DEPLOY - BUILD LOCALLY          ║
 REM ╚════════════════════════════════════════════════════════╝
 
 setlocal enabledelayedexpansion
@@ -27,6 +27,7 @@ for %%S in (%SERVICES%) do (
         echo ✅ CHANGED: %%S
         set CHANGES_FOUND=1
         call :BuildAndDeploy %%S
+        if !ERRORLEVEL! NEQ 0 exit /b 1
     ) else (
         echo ⏭️  No changes: %%S
     )
@@ -38,6 +39,7 @@ if !ERRORLEVEL! EQU 0 (
     echo ✅ CHANGED: frontend
     set CHANGES_FOUND=1
     call :BuildAndDeployFrontend
+    if !ERRORLEVEL! NEQ 0 exit /b 1
 ) else (
     echo ⏭️  No changes: frontend
 )
@@ -60,6 +62,7 @@ REM Function: Build and Deploy Microservice
 REM ═══════════════════════════════════════════════════════════
 :BuildAndDeploy
 set SERVICE_NAME=%1
+set LOCAL_IMAGE=%SERVICE_NAME%:latest
 set ECR_REPO=%AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com/%SERVICE_NAME%
 
 echo.
@@ -67,44 +70,63 @@ echo ╔════════════════════════
 echo ║  DEPLOYING: %SERVICE_NAME%
 echo ╚════════════════════════════════════════════════════════╝
 
-echo [1/5] Building Docker image...
-docker build -t %ECR_REPO%:latest -f microservices\%SERVICE_NAME%\Dockerfile microservices\%SERVICE_NAME%
+REM Build locally first
+echo [1/6] Building Docker image locally...
+docker build -t %LOCAL_IMAGE% -f microservices\%SERVICE_NAME%\Dockerfile microservices\%SERVICE_NAME%
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ BUILD FAILED: %SERVICE_NAME%
     exit /b 1
 )
-echo ✅ Image built
+echo ✅ Local image built: %LOCAL_IMAGE%
 
-echo [2/5] Logging into ECR...
-aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com 2>nul
+REM Tag for ECR
+echo [2/6] Tagging image for ECR...
+docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
+if !ERRORLEVEL! NEQ 0 (
+    echo ❌ TAG FAILED: %SERVICE_NAME%
+    exit /b 1
+)
+echo ✅ Image tagged: %ECR_REPO%:latest
+
+REM Login to ECR
+echo [3/6] Logging into ECR...
+for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
+echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ ECR LOGIN FAILED
     exit /b 1
 )
-echo ✅ Logged in
+echo ✅ Logged into ECR
 
-echo [3/5] Pushing to ECR...
+REM Push to ECR
+echo [4/6] Pushing to ECR...
 docker push %ECR_REPO%:latest
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ PUSH FAILED: %SERVICE_NAME%
     exit /b 1
 )
-echo ✅ Image pushed
+echo ✅ Image pushed to ECR
 
-echo [4/5] Checking if service exists...
+REM Check if service exists
+echo [5/6] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services %SERVICE_NAME% --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Service not found, skipping deployment
+    echo ⚠️  Service %SERVICE_NAME% not found in ECS, skipping deployment
+    echo ℹ️  Image is in ECR, you can create the service manually
     goto :eof
 )
 
-echo [5/5] Updating ECS service...
+REM Update ECS service
+echo [6/6] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service %SERVICE_NAME% --force-new-deployment --region %AWS_REGION% >nul
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ DEPLOYMENT FAILED: %SERVICE_NAME%
     exit /b 1
 )
-echo ✅ Deployment triggered
+echo ✅ ECS deployment triggered
+
+REM Cleanup local image to save space
+docker rmi %LOCAL_IMAGE% >nul 2>&1
 
 echo.
 echo ✅✅✅ %SERVICE_NAME% DEPLOYED SUCCESSFULLY! ✅✅✅
@@ -114,6 +136,7 @@ REM ═════════════════════════�
 REM Function: Build and Deploy Frontend
 REM ═══════════════════════════════════════════════════════════
 :BuildAndDeployFrontend
+set LOCAL_IMAGE=frontend:latest
 set ECR_REPO=%AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com/frontend
 
 echo.
@@ -121,44 +144,63 @@ echo ╔════════════════════════
 echo ║  DEPLOYING: FRONTEND
 echo ╚════════════════════════════════════════════════════════╝
 
-echo [1/5] Building Docker image...
-docker build -t %ECR_REPO%:latest -f Dockerfile.frontend .
+REM Build locally first
+echo [1/6] Building Docker image locally...
+docker build -t %LOCAL_IMAGE% -f Dockerfile.frontend .
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ BUILD FAILED: frontend
     exit /b 1
 )
-echo ✅ Image built
+echo ✅ Local image built: %LOCAL_IMAGE%
 
-echo [2/5] Logging into ECR...
-aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com 2>nul
+REM Tag for ECR
+echo [2/6] Tagging image for ECR...
+docker tag %LOCAL_IMAGE% %ECR_REPO%:latest
+if !ERRORLEVEL! NEQ 0 (
+    echo ❌ TAG FAILED: frontend
+    exit /b 1
+)
+echo ✅ Image tagged: %ECR_REPO%:latest
+
+REM Login to ECR
+echo [3/6] Logging into ECR...
+for /f "tokens=*" %%i in ('aws ecr get-login-password --region %AWS_REGION%') do set ECR_PASSWORD=%%i
+echo !ECR_PASSWORD! | docker login --username AWS --password-stdin %AWS_ACCOUNT_ID%.dkr.ecr.%AWS_REGION%.amazonaws.com
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ ECR LOGIN FAILED
     exit /b 1
 )
-echo ✅ Logged in
+echo ✅ Logged into ECR
 
-echo [3/5] Pushing to ECR...
+REM Push to ECR
+echo [4/6] Pushing to ECR...
 docker push %ECR_REPO%:latest
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ PUSH FAILED: frontend
     exit /b 1
 )
-echo ✅ Image pushed
+echo ✅ Image pushed to ECR
 
-echo [4/5] Checking if service exists...
+REM Check if service exists
+echo [5/6] Checking if ECS service exists...
 aws ecs describe-services --cluster %ECS_CLUSTER% --services frontend --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo ⚠️  Service not found, skipping deployment
+    echo ⚠️  Frontend service not found in ECS, skipping deployment
+    echo ℹ️  Image is in ECR, you can create the service manually
     goto :eof
 )
 
-echo [5/5] Updating ECS service...
+REM Update ECS service
+echo [6/6] Updating ECS service...
 aws ecs update-service --cluster %ECS_CLUSTER% --service frontend --force-new-deployment --region %AWS_REGION% >nul
 if !ERRORLEVEL! NEQ 0 (
     echo ❌ DEPLOYMENT FAILED: frontend
     exit /b 1
 )
-echo ✅ Deployment triggered
+echo ✅ ECS deployment triggered
+
+REM Cleanup local image to save space
+docker rmi %LOCAL_IMAGE% >nul 2>&1
 
 echo.
 echo ✅✅✅ FRONTEND DEPLOYED SUCCESSFULLY! ✅✅✅
