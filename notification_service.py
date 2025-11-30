@@ -5,6 +5,7 @@ import datetime
 import requests
 import smtplib
 import os
+import sys
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import importlib
@@ -50,14 +51,19 @@ CORS(app)
 DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
-DB_NAME = os.getenv('DB_NAME', 'notificationdb')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'ChangeMe123!')
+DB_NAME = os.getenv('DB_NAME', 'shopease')
 
 DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
+# Configure SQLAlchemy - DIRECTLY USE DATABASE_URI (no os.getenv wrapper!)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 
 db = SQLAlchemy(app)
 
@@ -65,7 +71,7 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # NOTIFICATION MODEL - Maps to 'notifications' table in notificationdb
@@ -109,7 +115,7 @@ def get_user_details(user_id):
             return response.json()
         return None
     except requests.RequestException as e:
-        print(f"⚠️ Failed to get user details for user_id {user_id}: {str(e)}")
+        print(f"⚠️ Failed to get user details for user_id {user_id}: {str(e)}", file=sys.stderr)
         return None
 
 def send_email_notification(recipient_email, subject, message):
@@ -129,32 +135,32 @@ def send_email_notification(recipient_email, subject, message):
             server.sendmail(EMAIL_USER, recipient_email, text)
             server.quit()
             
-            print(f"✉️  REAL EMAIL SENT to {recipient_email}")
+            print(f"✉️  REAL EMAIL SENT to {recipient_email}", file=sys.stderr)
             return True, "Email sent successfully to " + recipient_email
         else:
             # Demo mode
-            print("\n" + "="*60)
-            print("📧 EMAIL NOTIFICATION (DEMO MODE)")
-            print("="*60)
-            print(f"From: {FROM_NAME} <{EMAIL_USER}>")
-            print(f"To: {recipient_email}")
-            print(f"Subject: {subject}")
-            print("-"*60)
-            print("MESSAGE CONTENT:")
-            print(message[:500])  # First 500 chars
-            print("="*60)
-            print("✅ Email simulation completed successfully!")
-            print("="*60 + "\n")
+            print("\n" + "="*60, file=sys.stderr)
+            print("📧 EMAIL NOTIFICATION (DEMO MODE)", file=sys.stderr)
+            print("="*60, file=sys.stderr)
+            print(f"From: {FROM_NAME} <{EMAIL_USER}>", file=sys.stderr)
+            print(f"To: {recipient_email}", file=sys.stderr)
+            print(f"Subject: {subject}", file=sys.stderr)
+            print("-"*60, file=sys.stderr)
+            print("MESSAGE CONTENT:", file=sys.stderr)
+            print(message[:500], file=sys.stderr)  # First 500 chars
+            print("="*60, file=sys.stderr)
+            print("✅ Email simulation completed successfully!", file=sys.stderr)
+            print("="*60 + "\n", file=sys.stderr)
             
             return True, f"Email simulated successfully for {recipient_email}"
         
     except Exception as e:
-        print(f"❌ Email sending failed: {str(e)}")
+        print(f"❌ Email sending failed: {str(e)}", file=sys.stderr)
         return False, str(e)
 
 def send_sms_notification(phone_number, message):
     """Send SMS notification (simulated)"""
-    print(f"📱 SMS to {phone_number}: {message}")
+    print(f"📱 SMS to {phone_number}: {message}", file=sys.stderr)
     return True, "SMS sent successfully"
 
 def create_email_template(category, data):
@@ -319,6 +325,7 @@ def test_email():
             }), 500
             
     except Exception as e:
+        print(f"❌ Error in test_email: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/notifications', methods=['POST'])
@@ -389,6 +396,7 @@ def create_notification():
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error creating notification: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/notifications/<int:notification_id>', methods=['GET'])
@@ -469,24 +477,24 @@ def home():
 # ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print("="*80)
-    print("NOTIFICATION SERVICE STARTING")
-    print("="*80)
-    print(f"Database: {DB_NAME}")
-    print(f"Host:     {DB_HOST}")
-    print(f"Port:     5005")
-    print(f"Email:    {'ENABLED' if ENABLE_REAL_EMAIL_SENDING else 'DEMO MODE'}")
-    print("="*80)
-    print(f"User Service: {USER_SERVICE_URL}")
-    print("="*80)
+    print("="*80, file=sys.stderr)
+    print("NOTIFICATION SERVICE STARTING", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Database: {DB_NAME}", file=sys.stderr)
+    print(f"Host:     {DB_HOST}", file=sys.stderr)
+    print(f"Port:     5005", file=sys.stderr)
+    print(f"Email:    {'ENABLED' if ENABLE_REAL_EMAIL_SENDING else 'DEMO MODE'}", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"User Service: {USER_SERVICE_URL}", file=sys.stderr)
+    print("="*80, file=sys.stderr)
     
     with app.app_context():
         try:
             db.session.execute(db.text('SELECT 1'))
-            print("✅ Database connection successful!")
+            print("✅ Database connection successful!", file=sys.stderr)
         except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            print("⚠️  Service will start but may not function properly")
+            print(f"❌ Database connection failed: {e}", file=sys.stderr)
+            print("⚠️  Service will start but may not function properly", file=sys.stderr)
     
     port = int(os.getenv('PORT', 5005))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'

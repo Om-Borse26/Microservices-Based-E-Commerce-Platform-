@@ -6,6 +6,7 @@ import requests
 import uuid
 import random
 import os
+import sys
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -18,16 +19,20 @@ CORS(app)  # Enable CORS for all routes
 DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
-DB_NAME = os.getenv('DB_NAME', 'paymentdb')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'ChangeMe123!')
+DB_NAME = os.getenv('DB_NAME', 'shopease')
 
 # Build database URI
 DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
-# Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
+# Configure SQLAlchemy - DIRECTLY USE DATABASE_URI (no os.getenv wrapper!)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 
 db = SQLAlchemy(app)
 
@@ -35,9 +40,9 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://localhost:5002')
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5004')
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
+ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://order-service')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://notification-service')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAYMENT MODEL - Maps to 'payments' table in paymentdb
@@ -116,7 +121,7 @@ def update_order_status(order_id, status):
         )
         return response.status_code == 200
     except requests.RequestException as e:
-        print(f"⚠️  Failed to update order status: {e}")
+        print(f"⚠️  Failed to update order status: {e}", file=sys.stderr)
         return False
 
 def send_payment_notification(user_id, payment_data, order_id):
@@ -133,7 +138,7 @@ def send_payment_notification(user_id, payment_data, order_id):
                 user_email = user_data.get('email')
                 user_name = user_data.get('first_name') or user_data.get('username', 'Customer')
         except requests.RequestException:
-            print(f"⚠️  Could not get user details from user service for user_id {user_id}")
+            print(f"⚠️  Could not get user details from user service for user_id {user_id}", file=sys.stderr)
         
         notification_data = {
             'user_id': user_id,
@@ -156,14 +161,14 @@ def send_payment_notification(user_id, payment_data, order_id):
         )
         
         if response.status_code in [200, 201]:
-            print(f"✅ Payment notification sent successfully")
+            print(f"✅ Payment notification sent successfully", file=sys.stderr)
             return True
         else:
-            print(f"⚠️  Payment notification failed with status {response.status_code}")
+            print(f"⚠️  Payment notification failed with status {response.status_code}", file=sys.stderr)
             return False
             
     except requests.RequestException as e:
-        print(f"❌ Payment notification failed: {str(e)}")
+        print(f"❌ Payment notification failed: {str(e)}", file=sys.stderr)
         return False
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -232,6 +237,7 @@ def process_payment():
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error processing payment: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/payments/<int:payment_id>', methods=['GET'])
@@ -294,6 +300,7 @@ def refund_payment(payment_id):
             
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error processing refund: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/payments', methods=['GET'])
@@ -353,25 +360,25 @@ def home():
 # ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print("="*80)
-    print("PAYMENT SERVICE STARTING")
-    print("="*80)
-    print(f"Database: {DB_NAME}")
-    print(f"Host:     {DB_HOST}")
-    print(f"Port:     5003")
-    print("="*80)
-    print(f"Order Service:        {ORDER_SERVICE_URL}")
-    print(f"User Service:         {USER_SERVICE_URL}")
-    print(f"Notification Service: {NOTIFICATION_SERVICE_URL}")
-    print("="*80)
+    print("="*80, file=sys.stderr)
+    print("PAYMENT SERVICE STARTING", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Database: {DB_NAME}", file=sys.stderr)
+    print(f"Host:     {DB_HOST}", file=sys.stderr)
+    print(f"Port:     5003", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Order Service:        {ORDER_SERVICE_URL}", file=sys.stderr)
+    print(f"User Service:         {USER_SERVICE_URL}", file=sys.stderr)
+    print(f"Notification Service: {NOTIFICATION_SERVICE_URL}", file=sys.stderr)
+    print("="*80, file=sys.stderr)
     
     with app.app_context():
         try:
             db.session.execute(db.text('SELECT 1'))
-            print("✅ Database connection successful!")
+            print("✅ Database connection successful!", file=sys.stderr)
         except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            print("⚠️  Service will start but may not function properly")
+            print(f"❌ Database connection failed: {e}", file=sys.stderr)
+            print("⚠️  Service will start but may not function properly", file=sys.stderr)
     
     port = int(os.getenv('PORT', 5003))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'

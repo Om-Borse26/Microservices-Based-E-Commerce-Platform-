@@ -1,10 +1,10 @@
-{
+﻿{
   "family": "product-service",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
+  "executionRoleArn": "arn:aws:iam::/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "product-service",
@@ -12,18 +12,20 @@
       "essential": true,
       "portMappings": [{"containerPort": 5000, "protocol": "tcp"}],
       "environment": [
-        {"name": "DB_HOST", "value": "shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com"},
+        {"name": "DB_HOST", "value": "shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com"},
+        {"name": "DB_PORT", "value": "3306"},
         {"name": "DB_USER", "value": "admin"},
-        {"name": "DB_PASSWORD", "value": "ShopEase2025!SecureDB"},
-        {"name": "DB_NAME", "value": "product_db"},
+        {"name": "DB_PASSWORD", "value": "Yog101619Admin"},
+        {"name": "DB_NAME", "value": "productdb"},
         {"name": "PORT", "value": "5000"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/shopease",
+          "awslogs-group": "/ecs/product-service",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "product-service"
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
         }
       }
     }

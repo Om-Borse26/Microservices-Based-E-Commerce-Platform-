@@ -1,24 +1,54 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: ShopEase Infrastructure
+Description: ShopEase E-Commerce Microservices on AWS ECS Fargate (Free Tier)
 
 Parameters:
-  DatabasePassword:
+  VpcCIDR:
     Type: String
+    Default: 10.0.0.0/16
+  PublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+  PublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+  DBUsername:
+    Type: String
+    Default: admin
     NoEcho: true
-    Default: ShopEase2025!SecureDB
+  DBPassword:
+    Type: String
+    Default: ChangeMe123!
+    NoEcho: true
+  DBName:
+    Type: String
+    Default: shopease
+  ECRAccountId:
+    Type: String
+    Description: Your AWS Account ID for ECR
+    Default: "852048987212"
+  ECRRegion:
+    Type: String
+    Default: "us-east-1"
 
 Resources:
+
+  # VPC and Networking
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 10.0.0.0/16
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: shopease-vpc
+          Value: ShopEaseVPC
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ShopEaseIGW
 
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -30,142 +60,129 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.1.0/24
+      CidrBlock: !Ref PublicSubnet1CIDR
       AvailabilityZone: !Select [0, !GetAZs '']
       MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: ShopEasePublicSubnet1
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
+      CidrBlock: !Ref PublicSubnet2CIDR
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: ShopEasePublicSubnet2
 
-  RouteTable:
+  PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: ShopEasePublicRT
 
-  Route:
+  PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: AttachGateway
     Properties:
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  SubnetAssoc1:
+  PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnet1
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref PublicRouteTable
 
-  SubnetAssoc2:
+  PublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnet2
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref PublicRouteTable
 
-  ALBSG:
+  # Security Groups
+  RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ALB Security Group
+      GroupDescription: RDS MySQL Security Group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: ShopEaseRDSSG
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Service Security Group
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-
-  ECSSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: ECS Security Group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: -1
-          SourceSecurityGroupId: !Ref ALBSG
-
-  RDSSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: RDS Security Group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
-          SourceSecurityGroupId: !Ref ECSSG
+          FromPort: 5000
+          ToPort: 5005
+          CidrIp: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: ShopEaseECSSG
 
+  # RDS MySQL
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: RDS Subnet Group
+      DBSubnetGroupDescription: ShopEase RDS Subnet Group
       SubnetIds:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: ShopEaseDBSubnetGroup
 
-  MySQL:
+  ShopEaseRDS:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: shopease-mysql
+      DBInstanceIdentifier: shopease-db
       AllocatedStorage: 20
       DBInstanceClass: db.t3.micro
       Engine: mysql
-      MasterUsername: admin
-      MasterUserPassword: !Ref DatabasePassword
+      EngineVersion: "8.0"
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: !Ref DBName
       VPCSecurityGroups:
-        - !Ref RDSSG
+        - !Ref RDSSecurityGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: true
-      BackupRetentionPeriod: 0
+      BackupRetentionPeriod: 1
+      Tags:
+        - Key: Name
+          Value: ShopEaseRDS
 
-  ALB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Type: application
-      Scheme: internet-facing
-      SecurityGroups:
-        - !Ref ALBSG
-      Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Port: 80
-      Protocol: HTTP
-      VpcId: !Ref VPC
-      TargetType: ip
-
-  Listener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref ALB
-      Port: 80
-      Protocol: HTTP
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-
+  # ECS Cluster
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: shopease-cluster
 
-  LogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: /ecs/shopease
-      RetentionInDays: 7
-
-  ExecutionRole:
+  # IAM Role for ECS Tasks
+  ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -173,25 +190,463 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: ShopEaseECSTaskExecutionRole
+
+  # Application Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: shopease-alb
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: ShopEaseALB
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: 404
+            ContentType: text/plain
+            MessageBody: Not Found
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # Target Groups for each service
+  ProductTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: product-tg
+      Port: 5000
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+
+  UserTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: user-tg
+      Port: 5001
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+
+  OrderTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: order-tg
+      Port: 5002
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+
+  PaymentTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: payment-tg
+      Port: 5003
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+
+  NotificationTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: notification-tg
+      Port: 5005
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+
+  FrontendTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: frontend-tg
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+
+  # Listener Rules for path-based routing
+  ProductListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values: ["/api/products*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ProductTG
+
+  UserListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 2
+      Conditions:
+        - Field: path-pattern
+          Values: ["/api/users*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref UserTG
+
+  OrderListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 3
+      Conditions:
+        - Field: path-pattern
+          Values: ["/api/orders*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref OrderTG
+
+  PaymentListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 4
+      Conditions:
+        - Field: path-pattern
+          Values: ["/api/payments*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref PaymentTG
+
+  NotificationListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 5
+      Conditions:
+        - Field: path-pattern
+          Values: ["/api/notifications*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref NotificationTG
+
+  FrontendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 6
+      Conditions:
+        - Field: path-pattern
+          Values: ["/*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTG
+
+  # ECS Task Definitions and Services for each microservice
+  ProductTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: product-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: product-service
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/product_service:latest"
+          PortMappings:
+            - ContainerPort: 5000
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt ShopEaseRDS.Endpoint.Address
+            - Name: DB_PORT
+              Value: "3306"
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: PORT
+              Value: "5000"
+
+  ProductService:
+    Type: AWS::ECS::Service
+    DependsOn: ProductTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref ProductTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref ProductTG
+          ContainerName: product-service
+          ContainerPort: 5000
+
+  UserTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: user-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: user-service
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/user_service:latest"
+          PortMappings:
+            - ContainerPort: 5001
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt ShopEaseRDS.Endpoint.Address
+            - Name: DB_PORT
+              Value: "3306"
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: PORT
+              Value: "5001"
+
+  UserService:
+    Type: AWS::ECS::Service
+    DependsOn: UserTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref UserTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref UserTG
+          ContainerName: user-service
+          ContainerPort: 5001
+
+  OrderTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: order-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: order-service
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/order_service:latest"
+          PortMappings:
+            - ContainerPort: 5002
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt ShopEaseRDS.Endpoint.Address
+            - Name: DB_PORT
+              Value: "3306"
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: PORT
+              Value: "5002"
+
+  OrderService:
+    Type: AWS::ECS::Service
+    DependsOn: OrderTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref OrderTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref OrderTG
+          ContainerName: order-service
+          ContainerPort: 5002
+
+  PaymentTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: payment-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: payment-service
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/payment_service:latest"
+          PortMappings:
+            - ContainerPort: 5003
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt ShopEaseRDS.Endpoint.Address
+            - Name: DB_PORT
+              Value: "3306"
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: PORT
+              Value: "5003"
+
+  PaymentService:
+    Type: AWS::ECS::Service
+    DependsOn: PaymentTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref PaymentTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref PaymentTG
+          ContainerName: payment-service
+          ContainerPort: 5003
+
+  NotificationTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: notification-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: notification-service
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/notification_service:latest"
+          PortMappings:
+            - ContainerPort: 5005
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt ShopEaseRDS.Endpoint.Address
+            - Name: DB_PORT
+              Value: "3306"
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: PORT
+              Value: "5005"
+
+  NotificationService:
+    Type: AWS::ECS::Service
+    DependsOn: NotificationTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref NotificationTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref NotificationTG
+          ContainerName: notification-service
+          ContainerPort: 5005
+
+  FrontendTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: frontend
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: frontend
+          Image: !Sub "${ECRAccountId}.dkr.ecr.${ECRRegion}.amazonaws.com/frontend:latest"
+          PortMappings:
+            - ContainerPort: 80
+          Environment:
+            - Name: API_BASE_URL
+              Value: !Sub "http://${LoadBalancer.DNSName}"
+
+  FrontendService:
+    Type: AWS::ECS::Service
+    DependsOn: FrontendTG
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref FrontendTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ECSSecurityGroup]
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn: !Ref FrontendTG
+          ContainerName: frontend
+          ContainerPort: 80
 
 Outputs:
-  ALBURL:
-    Value: !Sub 'http://${ALB.DNSName}'
+  WebsiteURL:
+    Description: ShopEase Website URL
+    Value: !GetAtt LoadBalancer.DNSName
   RDSEndpoint:
-    Value: !GetAtt MySQL.Endpoint.Address
-  Cluster:
-    Value: !Ref ECSCluster
-    Export:
-      Name: ShopEase-Cluster
-  SecurityGroup:
-    Value: !Ref ECSSG
-    Export:
-      Name: ShopEase-SG
-  Subnet1:
-    Value: !Ref PublicSubnet1
-    Export:
-      Name: ShopEase-Subnet1
-  Subnet2:
-    Value: !Ref PublicSubnet2
-    Export:
-      Name: ShopEase-Subnet2
+    Description: RDS Endpoint
+    Value: !GetAtt ShopEaseRDS.Endpoint.Address

@@ -4,6 +4,7 @@ from flask_cors import CORS
 import datetime
 import requests
 import os
+import sys
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -16,16 +17,20 @@ CORS(app)  # Enable CORS for all routes
 DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
-DB_NAME = os.getenv('DB_NAME', 'orderdb')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'ChangeMe123!')
+DB_NAME = os.getenv('DB_NAME', 'shopease')
 
 # Build database URI
 DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
-# Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
+# Configure SQLAlchemy - DIRECTLY USE DATABASE_URI (no os.getenv wrapper!)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 
 db = SQLAlchemy(app)
 
@@ -33,8 +38,8 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-PRODUCT_SERVICE_URL = os.getenv('PRODUCT_SERVICE_URL', 'http://localhost:5000')
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5001')
+PRODUCT_SERVICE_URL = os.getenv('http://product-service')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ORDER MODELS - Maps to 'orders' and 'order_items' tables in orderdb
@@ -101,7 +106,7 @@ def get_product_details(product_id):
             return response.json()
         return None
     except requests.RequestException as e:
-        print(f"⚠️  Failed to get product {product_id}: {e}")
+        print(f"⚠️  Failed to get product {product_id}: {e}", file=sys.stderr)
         return None
 
 def validate_stock(product_id, quantity):
@@ -199,6 +204,7 @@ def create_order():
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error creating order: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/orders/<int:order_id>', methods=['GET'])
@@ -218,6 +224,7 @@ def get_order(order_id):
         
         return jsonify(order_dict), 200
     except Exception as e:
+        print(f"❌ Error getting order {order_id}: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 404
 
 @app.route('/orders/user/<int:user_id>', methods=['GET'])
@@ -234,6 +241,7 @@ def get_user_orders(user_id):
         
         return jsonify(result), 200
     except Exception as e:
+        print(f"❌ Error getting user orders: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/orders/<int:order_id>/status', methods=['PUT'])
@@ -264,6 +272,7 @@ def update_order_status(order_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error updating order status: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/orders', methods=['GET'])
@@ -290,6 +299,7 @@ def get_all_orders():
         }), 200
         
     except Exception as e:
+        print(f"❌ Error getting all orders: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/orders/<int:order_id>', methods=['DELETE'])
@@ -310,6 +320,7 @@ def cancel_order(order_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error cancelling order: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -329,24 +340,24 @@ def home():
 # ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print("="*80)
-    print("ORDER SERVICE STARTING")
-    print("="*80)
-    print(f"Database: {DB_NAME}")
-    print(f"Host:     {DB_HOST}")
-    print(f"Port:     5002")
-    print("="*80)
-    print(f"Product Service: {PRODUCT_SERVICE_URL}")
-    print(f"User Service:    {USER_SERVICE_URL}")
-    print("="*80)
+    print("="*80, file=sys.stderr)
+    print("ORDER SERVICE STARTING", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Database: {DB_NAME}", file=sys.stderr)
+    print(f"Host:     {DB_HOST}", file=sys.stderr)
+    print(f"Port:     5002", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Product Service: {PRODUCT_SERVICE_URL}", file=sys.stderr)
+    print(f"User Service:    {USER_SERVICE_URL}", file=sys.stderr)
+    print("="*80, file=sys.stderr)
     
     with app.app_context():
         try:
             db.session.execute(db.text('SELECT 1'))
-            print("✅ Database connection successful!")
+            print("✅ Database connection successful!", file=sys.stderr)
         except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            print("⚠️  Service will start but may not function properly")
+            print(f"❌ Database connection failed: {e}", file=sys.stderr)
+            print("⚠️  Service will start but may not function properly", file=sys.stderr)
     
     port = int(os.getenv('PORT', 5002))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'

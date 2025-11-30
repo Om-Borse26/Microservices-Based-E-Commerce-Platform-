@@ -4,12 +4,18 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
-import os
 import requests
-from functools import wraps
+import os
+import sys
 
 app = Flask(__name__)
 CORS(app)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# SECRET KEY & JWT CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════════
+
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'shopease-secret-key-change-in-production')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # DATABASE CONFIGURATION - RDS Connection
@@ -18,15 +24,21 @@ CORS(app)
 DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yog101619Admin')
-DB_NAME = os.getenv('DB_NAME', 'userdb')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'ChangeMe123!')
+DB_NAME = os.getenv('DB_NAME', 'shopease')
 
 DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', DATABASE_URI)
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production-12345')
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+    'pool_size': 10,
+    'max_overflow': 20
+}
 
 db = SQLAlchemy(app)
 
@@ -34,10 +46,10 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://localhost:5004')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://notification-service')
 
 # ════════════════════════════════════════════════════════════════════════════════
-# USER MODEL - Maps to 'users' table in userdb
+# USER MODEL
 # ════════════════════════════════════════════════════════════════════════════════
 
 class User(db.Model):
@@ -47,53 +59,56 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    first_name = db.Column(db.String(100))
-    last_name = db.Column(db.String(100))
+    full_name = db.Column(db.String(200))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    is_active = db.Column(db.Boolean, default=True)
-
+    
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-
+    
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-
+    
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'first_name': self.first_name,
-            'last_name': self.last_name,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'is_active': self.is_active
+            'full_name': self.full_name,
+            'phone': self.phone,
+            'address': self.address,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 # ════════════════════════════════════════════════════════════════════════════════
-# AUTHENTICATION DECORATOR
+# HELPER FUNCTIONS
 # ════════════════════════════════════════════════════════════════════════════════
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
+def send_notification(user_id, notification_type, message, email, username):
+    try:
+        response = requests.post(
+            f'{NOTIFICATION_SERVICE_URL}/notifications',
+            json={
+                'user_id': user_id,
+                'type': notification_type,
+                'category': 'user_registration' if notification_type == 'registration' else 'general',
+                'title': 'Welcome to ShopEase!' if notification_type == 'registration' else 'Notification',
+                'message': message,
+                'email': email,
+                'username': username,
+                'delivery_method': 'email'
+            },
+            timeout=5
+        )
         
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
-        
-        try:
-            if token.startswith('Bearer '):
-                token = token[7:]
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            current_user_id = data['user_id']
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Token is invalid'}), 401
-        
-        return f(current_user_id, *args, **kwargs)
-    
-    return decorated
+        if response.status_code == 201:
+            print(f"✅ Notification sent to user {user_id}", file=sys.stderr)
+        else:
+            print(f"⚠️  Notification failed: {response.status_code}", file=sys.stderr)
+            
+    except requests.RequestException as e:
+        print(f"⚠️  Could not send notification: {e}", file=sys.stderr)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # API ROUTES
@@ -101,7 +116,6 @@ def token_required(f):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     try:
         db.session.execute(db.text('SELECT 1'))
         db_status = 'connected'
@@ -118,60 +132,37 @@ def health_check():
 
 @app.route('/register', methods=['POST'])
 def register():
-    """Register a new user"""
     try:
         data = request.get_json()
         
-        # Validation
-        if not data or not data.get('username') or not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Username, email, and password are required'}), 400
+        if not data or 'username' not in data or 'email' not in data or 'password' not in data:
+            return jsonify({'error': 'Missing required fields: username, email, password'}), 400
         
-        # Check if user already exists
         if User.query.filter_by(username=data['username']).first():
-            return jsonify({'error': 'Username already exists'}), 409
+            return jsonify({'error': 'Username already exists'}), 400
         
         if User.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Email already exists'}), 409
+            return jsonify({'error': 'Email already exists'}), 400
         
-        # Create new user
         user = User(
             username=data['username'],
             email=data['email'],
-            first_name=data.get('first_name', ''),
-            last_name=data.get('last_name', '')
+            full_name=data.get('full_name', ''),
+            phone=data.get('phone', ''),
+            address=data.get('address', '')
         )
         user.set_password(data['password'])
         
         db.session.add(user)
         db.session.commit()
         
-        # Send welcome email notification
-        try:
-            notification_data = {
-                'user_id': user.id,
-                'type': 'email',
-                'category': 'user_registration',
-                'title': 'Welcome to ShopEase!',
-                'message': f'Welcome {user.first_name or user.username}! Your account has been created successfully.',
-                'username': user.username,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name
-            }
-            
-            response = requests.post(
-                f"{NOTIFICATION_SERVICE_URL}/notifications",
-                json=notification_data,
-                timeout=10
-            )
-            
-            if response.status_code in [200, 201]:
-                print(f"✅ Welcome email sent successfully for user {user.username}")
-            else:
-                print(f"⚠️  Welcome email failed with status {response.status_code}")
-                
-        except Exception as email_error:
-            print(f"⚠️  Welcome email failed: {email_error}")
+        send_notification(
+            user.id,
+            'registration',
+            f'Welcome {user.username}! Your account has been created successfully.',
+            user.email,
+            user.username
+        )
         
         return jsonify({
             'message': 'User registered successfully',
@@ -184,72 +175,62 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
-    """User login"""
     try:
         data = request.get_json()
         
-        if not data or not data.get('username') or not data.get('password'):
-            return jsonify({'error': 'Username and password are required'}), 400
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'error': 'Missing username or password'}), 400
         
         user = User.query.filter_by(username=data['username']).first()
         
-        if user and user.check_password(data['password']) and user.is_active:
-            # Generate JWT token
-            token = jwt.encode({
-                'user_id': user.id,
-                'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-            }, app.config['SECRET_KEY'], algorithm='HS256')
-            
-            return jsonify({
-                'message': 'Login successful',
-                'token': token,
-                'user': user.to_dict()
-            }), 200
-        else:
-            return jsonify({'error': 'Invalid credentials'}), 401
-            
+        if not user or not user.check_password(data['password']):
+            return jsonify({'error': 'Invalid username or password'}), 401
+        
+        token = jwt.encode({
+            'user_id': user.id,
+            'username': user.username,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        }, app.config['SECRET_KEY'], algorithm='HS256')
+        
+        return jsonify({
+            'message': 'Login successful',
+            'token': token,
+            'user': user.to_dict()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/users', methods=['GET'])
+def get_users():
+    try:
+        users = User.query.all()
+        return jsonify([user.to_dict() for user in users]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/users/<int:user_id>', methods=['GET'])
-def get_user_by_id(user_id):
-    """Get user by ID - for inter-service communication"""
+def get_user(user_id):
     try:
         user = User.query.get_or_404(user_id)
         return jsonify(user.to_dict()), 200
     except Exception as e:
-        return jsonify({'error': 'User not found'}), 404
-
-@app.route('/profile', methods=['GET'])
-@token_required
-def get_profile(current_user_id):
-    """Get current user profile"""
-    try:
-        user = User.query.get_or_404(current_user_id)
-        return jsonify(user.to_dict()), 200
-    except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/profile', methods=['PUT'])
-@token_required
-def update_profile(current_user_id):
-    """Update current user profile"""
+@app.route('/users/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
     try:
-        user = User.query.get_or_404(current_user_id)
+        user = User.query.get_or_404(user_id)
         data = request.get_json()
         
-        if data.get('email'):
-            # Check if email is already taken by another user
-            existing_user = User.query.filter_by(email=data['email']).first()
-            if existing_user and existing_user.id != current_user_id:
-                return jsonify({'error': 'Email already exists'}), 409
-            user.email = data['email']
-        
-        if data.get('first_name'):
-            user.first_name = data['first_name']
-        
-        if data.get('last_name'):
-            user.last_name = data['last_name']
+        if 'full_name' in data:
+            user.full_name = data['full_name']
+        if 'phone' in data:
+            user.phone = data['phone']
+        if 'address' in data:
+            user.address = data['address']
+        if 'password' in data:
+            user.set_password(data['password'])
         
         db.session.commit()
         return jsonify(user.to_dict()), 200
@@ -257,19 +238,6 @@ def update_profile(current_user_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
-@app.route('/users', methods=['GET'])
-def get_users():
-    """Get all users (admin endpoint)"""
-    try:
-        users = User.query.all()
-        return jsonify([user.to_dict() for user in users]), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ════════════════════════════════════════════════════════════════════════════════
-# FRONTEND SERVING ROUTES
-# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/frontend/<path:path>')
 def serve_frontend(path):
@@ -284,23 +252,45 @@ def home():
 # ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print("="*80)
-    print("USER SERVICE STARTING")
-    print("="*80)
-    print(f"Database: {DB_NAME}")
-    print(f"Host:     {DB_HOST}")
-    print(f"Port:     5001")
-    print("="*80)
-    print(f"Notification Service: {NOTIFICATION_SERVICE_URL}")
-    print("="*80)
+    print("="*80, file=sys.stderr)
+    print("USER SERVICE STARTING", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+    print(f"Database: {DB_NAME}", file=sys.stderr)
+    print(f"Host:     {DB_HOST}", file=sys.stderr)
+    print(f"Port:     5001", file=sys.stderr)
+    print("="*80, file=sys.stderr)
     
     with app.app_context():
-        try:
-            db.session.execute(db.text('SELECT 1'))
-            print("✅ Database connection successful!")
-        except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            print("⚠️  Service will start but may not function properly")
+        max_retries = 5
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                db.session.execute(db.text('SELECT 1'))
+                print("✅ Database connection successful!", file=sys.stderr)
+                
+                try:
+                    db.create_all()
+                    print("✅ Database tables created/verified!", file=sys.stderr)
+                except Exception as e:
+                    print(f"⚠️  Table creation warning: {e}", file=sys.stderr)
+                
+                break
+                
+            except Exception as e:
+                retry_count += 1
+                print(f"❌ Database connection attempt {retry_count}/{max_retries} failed: {e}", file=sys.stderr)
+                
+                if retry_count >= max_retries:
+                    print(f"❌ Could not connect to database after {max_retries} attempts", file=sys.stderr)
+                    print(f"   DB_HOST: {DB_HOST}", file=sys.stderr)
+                    print(f"   DB_PORT: {DB_PORT}", file=sys.stderr)
+                    print(f"   DB_USER: {DB_USER}", file=sys.stderr)
+                    print(f"   DB_NAME: {DB_NAME}", file=sys.stderr)
+                    print("⚠️  Service starting anyway but may not function properly", file=sys.stderr)
+                else:
+                    import time
+                    time.sleep(2)
     
     port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'

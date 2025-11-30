@@ -1,50 +1,55 @@
-{
+﻿{
     "memory":  "512",
-    "executionRoleArn":  "arn:aws:iam::852048987212:role/shopease-ecs-execution-role",
-    "family":  "user-service",
+    "executionRoleArn":  "arn:aws:iam::852048987212:role/ecsTaskExecutionRole",
+    "family":  "payment-service",
     "networkMode":  "awsvpc",
     "requiresCompatibilities":  [
                                     "FARGATE"
                                 ],
     "containerDefinitions":  [
                                  {
-                                     "name":  "user-service",
+                                     "name":  "payment-service",
                                      "logConfiguration":  {
                                                               "logDriver":  "awslogs",
                                                               "options":  {
                                                                               "awslogs-region":  "us-east-1",
-                                                                              "awslogs-stream-prefix":  "user-service",
-                                                                              "awslogs-group":  "/ecs/shopease"
+                                                                              "awslogs-stream-prefix":  "ecs",
+                                                                              "awslogs-create-group":  "true",
+                                                                              "awslogs-group":  "/ecs/payment-service"
                                                                           }
                                                           },
                                      "environment":  [
                                                          {
-                                                             "value":  "shopease-mysql.cmni2wmcozyh.us-east-1.rds.amazonaws.com",
+                                                             "value":  "shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com",
                                                              "name":  "DB_HOST"
+                                                         },
+                                                         {
+                                                             "value":  "3306",
+                                                             "name":  "DB_PORT"
                                                          },
                                                          {
                                                              "value":  "admin",
                                                              "name":  "DB_USER"
                                                          },
                                                          {
-                                                             "value":  "ShopEase2025!SecureDB",
+                                                             "value":  "Yog101619Admin",
                                                              "name":  "DB_PASSWORD"
                                                          },
                                                          {
-                                                             "value":  "user_db",
+                                                             "value":  "paymentdb",
                                                              "name":  "DB_NAME"
                                                          },
                                                          {
-                                                             "value":  "5001",
+                                                             "value":  "5003",
                                                              "name":  "PORT"
                                                          }
                                                      ],
                                      "essential":  true,
-                                     "image":  "852048987212.dkr.ecr.us-east-1.amazonaws.com/user_service:latest",
+                                     "image":  "852048987212.dkr.ecr.us-east-1.amazonaws.com/payment_service:latest",
                                      "portMappings":  [
                                                           {
                                                               "protocol":  "tcp",
-                                                              "containerPort":  5001
+                                                              "containerPort":  5003
                                                           }
                                                       ]
                                  }
