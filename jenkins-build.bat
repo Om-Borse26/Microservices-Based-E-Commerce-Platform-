@@ -25,12 +25,12 @@ set ECS_CLUSTER=shopease-cluster
 set CHANGES_FOUND=0
 
 REM Map logical service names to actual ECS service names
-set PRODUCT_SERVICE=shopease-stack-ProductService-PSYZnUC99e4f
-set USER_SERVICE=shopease-stack-UserService-QP41ObLl0NJK
-set ORDER_SERVICE=shopease-stack-OrderService-HWHNQzdHFaF1
-set PAYMENT_SERVICE=shopease-stack-PaymentService-rAXDSwzCYyDa
-set NOTIFICATION_SERVICE=shopease-stack-NotificationService-TnxSL9txAsHb
-set FRONTEND_SERVICE=shopease-stack-FrontendService-zJfpCsl3gvxf
+set PRODUCT_SERVICE=shopease-stack-ProductService-omqeMXofaELB
+set USER_SERVICE=shopease-stack-UserService-DEE2iGGSOJ1L
+set ORDER_SERVICE=shopease-stack-OrderService-96DkNIzEALBA
+set PAYMENT_SERVICE=shopease-stack-PaymentService-QQI4FH6YqrNm
+set NOTIFICATION_SERVICE=shopease-stack-NotificationService-ypxv8Gz2l1Ev
+set FRONTEND_SERVICE=shopease-stack-FrontendService-9rsUSulyx6O3
 
 echo ════════════════════════════════════════════════════════
 echo   🔍 STAGE 1: DETECTING CHANGES
