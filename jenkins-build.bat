@@ -40,11 +40,12 @@ echo ✅ AWS credentials validated
 REM Check what changed in last commit
 git diff --name-only HEAD~1 HEAD > changed_files.txt
 
-REM Check each microservice
-set SERVICES=product-service user-service order-service payment-service notification-service
+REM List of microservice files (adjust if you rename them)
+set SERVICES=product_service user_service order_service payment_service notification_service
 
+REM Build and test changed microservices
 for %%S in (%SERVICES%) do (
-    findstr /i "microservices\\%%S" changed_files.txt >nul
+    findstr /i "%%S.py" changed_files.txt >nul
     if !ERRORLEVEL! EQU 0 (
         echo ✅ CHANGED: %%S
         set CHANGES_FOUND=1
@@ -56,7 +57,7 @@ for %%S in (%SERVICES%) do (
 )
 
 REM Check frontend
-findstr /i "frontend" changed_files.txt >nul
+findstr /i "frontend/" changed_files.txt >nul
 if !ERRORLEVEL! EQU 0 (
     echo ✅ CHANGED: frontend
     set CHANGES_FOUND=1
@@ -81,9 +82,9 @@ echo   🚀 STAGE 3: DEPLOYING TO PRODUCTION
 echo ════════════════════════════════════════════════════════
 echo.
 
-REM Deploy all changed services
+REM Deploy all changed microservices
 for %%S in (%SERVICES%) do (
-    findstr /i "microservices\\%%S" changed_files.txt >nul
+    findstr /i "%%S.py" changed_files.txt >nul
     if !ERRORLEVEL! EQU 0 (
         call :DeployToProduction %%S
         if !ERRORLEVEL! NEQ 0 exit /b 1
@@ -91,7 +92,7 @@ for %%S in (%SERVICES%) do (
 )
 
 REM Deploy frontend if changed
-findstr /i "frontend" changed_files.txt >nul
+findstr /i "frontend/" changed_files.txt >nul
 if !ERRORLEVEL! EQU 0 (
     call :DeployFrontendToProduction
     if !ERRORLEVEL! NEQ 0 exit /b 1
@@ -127,8 +128,8 @@ echo ═════════════════════════
 
 if "%SERVICE_TYPE%"=="microservice" (
     echo [1/2] Checking Python syntax...
-    if exist "microservices\%SERVICE_NAME%\*.py" (
-        python -m py_compile microservices\%SERVICE_NAME%\*.py >nul 2>&1
+    if exist "%SERVICE_NAME%.py" (
+        python -m py_compile %SERVICE_NAME%.py >nul 2>&1
         if !ERRORLEVEL! EQU 0 (
             echo ✅ Python syntax valid
         ) else (
@@ -136,12 +137,12 @@ if "%SERVICE_TYPE%"=="microservice" (
             exit /b 1
         )
     ) else (
-        echo ⚠️  No Python files found
+        echo ⚠️  No Python file found
     )
     
     echo [2/2] Verifying Dockerfile...
-    if not exist "microservices\%SERVICE_NAME%\Dockerfile" (
-        echo ❌ Dockerfile not found!
+    if not exist "Dockerfile.%SERVICE_NAME%" (
+        echo ❌ Dockerfile.%SERVICE_NAME% not found!
         exit /b 1
     )
     echo ✅ Dockerfile found
@@ -171,7 +172,7 @@ echo ═════════════════════════
 
 echo [1/5] Building Docker image locally...
 if "%SERVICE_TYPE%"=="microservice" (
-    docker build -t %LOCAL_IMAGE% -f microservices\%SERVICE_NAME%\Dockerfile microservices\%SERVICE_NAME%
+    docker build -t %LOCAL_IMAGE% -f Dockerfile.%SERVICE_NAME% .
 ) else (
     docker build -t %LOCAL_IMAGE% -f Dockerfile.frontend .
 )
