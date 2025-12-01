@@ -52,17 +52,16 @@ NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://shopeas
 # ════════════════════════════════════════════════════════════════════════════════
 # USER MODEL
 # ════════════════════════════════════════════════════════════════════════════════
-
+    
 class User(db.Model):
     __tablename__ = 'users'
     
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(100), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    full_name = db.Column(db.String(200))
-    phone = db.Column(db.String(20))
-    address = db.Column(db.Text)
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     
     def set_password(self, password):
@@ -70,15 +69,14 @@ class User(db.Model):
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-    
+        
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'full_name': self.full_name,
-            'phone': self.phone,
-            'address': self.address,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -147,10 +145,10 @@ def register():
         user = User(
             username=data['username'],
             email=data['email'],
-            full_name=data.get('full_name', ''),
-            phone=data.get('phone', ''),
-            address=data.get('address', '')
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', '')
         )
+        
         user.set_password(data['password'])
         
         db.session.add(user)
@@ -223,12 +221,10 @@ def update_user(user_id):
         user = User.query.get_or_404(user_id)
         data = request.get_json()
         
-        if 'full_name' in data:
-            user.full_name = data['full_name']
-        if 'phone' in data:
-            user.phone = data['phone']
-        if 'address' in data:
-            user.address = data['address']
+        if 'first_name' in data:
+            user.first_name = data['first_name']
+        if 'last_name' in data:
+            user.last_name = data['last_name']
         if 'password' in data:
             user.set_password(data['password'])
         
