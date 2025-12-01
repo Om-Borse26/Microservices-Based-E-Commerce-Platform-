@@ -39,8 +39,8 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-PRODUCT_SERVICE_URL = os.getenv('http://product-service')
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
+PRODUCT_SERVICE_URL = os.getenv('PRODUCT_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/products')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/users')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ORDER MODELS - Maps to 'orders' and 'order_items' tables in orderdb
@@ -102,7 +102,7 @@ class OrderItem(db.Model):
 def get_product_details(product_id):
     """Fetch product details from product service"""
     try:
-        response = requests.get(f'{PRODUCT_SERVICE_URL}/products/{product_id}', timeout=5)
+        response = requests.get(f'{PRODUCT_SERVICE_URL}/{product_id}', timeout=5)
         if response.status_code == 200:
             return response.json()
         return None
@@ -138,7 +138,7 @@ def health_check():
         'db_host': DB_HOST
     }), 200
 
-@app.route('/orders', methods=['POST'])
+@app.route('/api/orders', methods=['POST'])
 def create_order():
     """Create a new order"""
     try:
@@ -208,7 +208,7 @@ def create_order():
         print(f"❌ Error creating order: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/orders/<int:order_id>', methods=['GET'])
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
 def get_order(order_id):
     """Get order details"""
     try:
@@ -228,7 +228,7 @@ def get_order(order_id):
         print(f"❌ Error getting order {order_id}: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 404
 
-@app.route('/orders/user/<int:user_id>', methods=['GET'])
+@app.route('/api/orders/user/<int:user_id>', methods=['GET'])
 def get_user_orders(user_id):
     """Get all orders for a specific user"""
     try:
@@ -245,7 +245,7 @@ def get_user_orders(user_id):
         print(f"❌ Error getting user orders: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/orders/<int:order_id>/status', methods=['PUT'])
+@app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
 def update_order_status(order_id):
     """Update order status"""
     try:
@@ -276,7 +276,7 @@ def update_order_status(order_id):
         print(f"❌ Error updating order status: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/orders', methods=['GET'])
+@app.route('/api/orders', methods=['GET'])
 def get_all_orders():
     """Get all orders (admin endpoint)"""
     try:
@@ -303,7 +303,7 @@ def get_all_orders():
         print(f"❌ Error getting all orders: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/orders/<int:order_id>', methods=['DELETE'])
+@app.route('/api/orders/<int:order_id>', methods=['DELETE'])
 def cancel_order(order_id):
     """Cancel an order"""
     try:

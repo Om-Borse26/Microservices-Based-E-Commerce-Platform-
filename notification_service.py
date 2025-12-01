@@ -72,7 +72,7 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/users')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # NOTIFICATION MODEL - Maps to 'notifications' table in notificationdb
@@ -111,7 +111,7 @@ class Notification(db.Model):
 def get_user_details(user_id):
     """Fetch user details from user service"""
     try:
-        response = requests.get(f'{USER_SERVICE_URL}/users/{user_id}', timeout=5)
+        response = requests.get(f'{USER_SERVICE_URL}/{user_id}', timeout=5)
         if response.status_code == 200:
             return response.json()
         return None
@@ -329,7 +329,7 @@ def test_email():
         print(f"❌ Error in test_email: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/notifications', methods=['POST'])
+@app.route('/api/notifications', methods=['POST'])
 def create_notification():
     """Create and send a notification"""
     try:
@@ -400,7 +400,7 @@ def create_notification():
         print(f"❌ Error creating notification: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/notifications/<int:notification_id>', methods=['GET'])
+@app.route('/api/notifications/<int:notification_id>', methods=['GET'])
 def get_notification(notification_id):
     """Get notification details"""
     try:
@@ -409,7 +409,7 @@ def get_notification(notification_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/notifications/user/<int:user_id>', methods=['GET'])
+@app.route('/api/notifications/user/<int:user_id>', methods=['GET'])
 def get_user_notifications(user_id):
     """Get all notifications for a user"""
     try:
@@ -420,7 +420,7 @@ def get_user_notifications(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/notifications', methods=['GET'])
+@app.route('/api/notifications', methods=['GET'])
 def get_all_notifications():
     """Get all notifications"""
     try:
@@ -443,7 +443,7 @@ def get_all_notifications():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/notifications/stats', methods=['GET'])
+@app.route('/api/notifications/stats', methods=['GET'])
 def get_notification_stats():
     """Get notification statistics"""
     try:

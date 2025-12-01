@@ -47,7 +47,7 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://notification-service')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/notifications')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # USER MODEL
@@ -88,8 +88,7 @@ class User(db.Model):
 
 def send_notification(user_id, notification_type, message, email, username):
     try:
-        response = requests.post(
-            f'{NOTIFICATION_SERVICE_URL}/notifications',
+        response = requests.post(f'{NOTIFICATION_SERVICE_URL}/notifications',     
             json={
                 'user_id': user_id,
                 'type': notification_type,
@@ -131,7 +130,7 @@ def health_check():
         'db_host': DB_HOST
     }), 200
 
-@app.route('/register', methods=['POST'])
+@app.route('/api/users/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
@@ -174,7 +173,7 @@ def register():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/login', methods=['POST'])
+@app.route('/api/users/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
@@ -202,7 +201,7 @@ def login():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/users', methods=['GET'])
+@app.route('/api/users', methods=['GET'])
 def get_users():
     try:
         users = User.query.all()
@@ -210,7 +209,7 @@ def get_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/users/<int:user_id>', methods=['GET'])
+@app.route('/api/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     try:
         user = User.query.get_or_404(user_id)
@@ -218,7 +217,7 @@ def get_user(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/users/<int:user_id>', methods=['PUT'])
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
 def update_user(user_id):
     try:
         user = User.query.get_or_404(user_id)

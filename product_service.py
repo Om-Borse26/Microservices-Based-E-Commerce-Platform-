@@ -58,7 +58,7 @@ def health_check():
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
-@app.route('/products', methods=['GET'])
+@app.route('/api/products', methods=['GET'])
 def get_products():
     try:
         products = Product.query.all()
@@ -66,7 +66,7 @@ def get_products():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/products/<int:product_id>', methods=['GET'])
+@app.route('/api/products/<int:product_id>', methods=['GET'])
 def get_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
@@ -74,7 +74,7 @@ def get_product(product_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/products', methods=['POST'])
+@app.route('/api/products', methods=['POST'])
 def create_product():
     try:
         data = request.get_json()
@@ -93,7 +93,7 @@ def create_product():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/products/<int:product_id>', methods=['PUT'])
+@app.route('/api/products/<int:product_id>', methods=['PUT'])
 def update_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
@@ -118,7 +118,7 @@ def update_product(product_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/products/<int:product_id>', methods=['DELETE'])
+@app.route('/api/products/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
@@ -129,7 +129,7 @@ def delete_product(product_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/products/<int:product_id>/stock', methods=['PATCH'])
+@app.route('/api/products/<int:product_id>/stock', methods=['PATCH'])
 def update_stock(product_id):
     try:
         data = request.get_json()

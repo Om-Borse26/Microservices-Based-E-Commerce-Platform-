@@ -41,9 +41,9 @@ db = SQLAlchemy(app)
 # MICROSERVICES CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════════
 
-ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://order-service')
-NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://notification-service')
-USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service')
+ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/orders')
+NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/notifications')
+USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/users')
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAYMENT MODEL - Maps to 'payments' table in paymentdb
@@ -193,7 +193,7 @@ def health_check():
         'db_host': DB_HOST
     }), 200
 
-@app.route('/payments', methods=['POST'])
+@app.route('/api/payments', methods=['POST'])
 def process_payment():
     """Process a new payment"""
     try:
@@ -241,7 +241,7 @@ def process_payment():
         print(f"❌ Error processing payment: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/<int:payment_id>', methods=['GET'])
+@app.route('/api/payments/<int:payment_id>', methods=['GET'])
 def get_payment(payment_id):
     """Get payment details"""
     try:
@@ -250,7 +250,7 @@ def get_payment(payment_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/payments/order/<int:order_id>', methods=['GET'])
+@app.route('/api/payments/order/<int:order_id>', methods=['GET'])
 def get_payments_by_order(order_id):
     """Get all payments for a specific order"""
     try:
@@ -259,7 +259,7 @@ def get_payments_by_order(order_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/user/<int:user_id>', methods=['GET'])
+@app.route('/api/payments/user/<int:user_id>', methods=['GET'])
 def get_payments_by_user(user_id):
     """Get all payments for a specific user"""
     try:
@@ -268,7 +268,7 @@ def get_payments_by_user(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/<int:payment_id>/refund', methods=['POST'])
+@app.route('/api/payments/<int:payment_id>/refund', methods=['POST'])
 def refund_payment(payment_id):
     """Process payment refund"""
     try:
@@ -304,7 +304,7 @@ def refund_payment(payment_id):
         print(f"❌ Error processing refund: {e}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments', methods=['GET'])
+@app.route('/api/payments', methods=['GET'])
 def get_all_payments():
     """Get all payments (admin endpoint)"""
     try:
@@ -324,7 +324,7 @@ def get_all_payments():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/payments/stats', methods=['GET'])
+@app.route('/api/payments/stats', methods=['GET'])
 def get_payment_stats():
     """Get payment statistics"""
     try:
