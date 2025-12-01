@@ -24,6 +24,14 @@ set AWS_ACCOUNT_ID=852048987212
 set ECS_CLUSTER=shopease-cluster
 set CHANGES_FOUND=0
 
+REM Map logical service names to actual ECS service names
+set PRODUCT_SERVICE=shopease-stack-ProductService-PSYZnUC99e4f
+set USER_SERVICE=shopease-stack-UserService-QP41ObLl0NJK
+set ORDER_SERVICE=shopease-stack-OrderService-HWHNQzdHFaF1
+set PAYMENT_SERVICE=shopease-stack-PaymentService-rAXDSwzCYyDa
+set NOTIFICATION_SERVICE=shopease-stack-NotificationService-TnxSL9txAsHb
+set FRONTEND_SERVICE=shopease-stack-FrontendService-zJfpCsl3gvxf
+
 echo ════════════════════════════════════════════════════════
 echo   🔍 STAGE 1: DETECTING CHANGES
 echo ════════════════════════════════════════════════════════
@@ -232,16 +240,22 @@ REM Function: Deploy to Production
 REM ═══════════════════════════════════════════════════════════
 :DeployToProduction
 set SERVICE_NAME=%1
+REM Map logical service name to actual ECS service name
+if "%SERVICE_NAME%"=="product_service" set ECS_SERVICE_NAME=%PRODUCT_SERVICE%
+if "%SERVICE_NAME%"=="user_service" set ECS_SERVICE_NAME=%USER_SERVICE%
+if "%SERVICE_NAME%"=="order_service" set ECS_SERVICE_NAME=%ORDER_SERVICE%
+if "%SERVICE_NAME%"=="payment_service" set ECS_SERVICE_NAME=%PAYMENT_SERVICE%
+if "%SERVICE_NAME%"=="notification_service" set ECS_SERVICE_NAME=%NOTIFICATION_SERVICE%
 echo.
 echo ╔════════════════════════════════════════════════════════╗
 echo ║  DEPLOYING: %SERVICE_NAME%
 echo ╚════════════════════════════════════════════════════════╝
-aws ecs describe-services --cluster %ECS_CLUSTER% --services %SERVICE_NAME% --region %AWS_REGION% >nul 2>&1
+aws ecs describe-services --cluster %ECS_CLUSTER% --services !ECS_SERVICE_NAME! --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
     echo ⚠️  Service not found, skipping
     goto :eof
 )
-aws ecs update-service --cluster %ECS_CLUSTER% --service %SERVICE_NAME% --force-new-deployment --region %AWS_REGION% >nul
+aws ecs update-service --cluster %ECS_CLUSTER% --service !ECS_SERVICE_NAME! --force-new-deployment --region %AWS_REGION% >nul
 echo ✅ Deployed
 goto :eof
 
@@ -253,12 +267,12 @@ echo.
 echo ╔════════════════════════════════════════════════════════╗
 echo ║  DEPLOYING: FRONTEND
 echo ╚════════════════════════════════════════════════════════╝
-aws ecs describe-services --cluster %ECS_CLUSTER% --services frontend --region %AWS_REGION% >nul 2>&1
+aws ecs describe-services --cluster %ECS_CLUSTER% --services %FRONTEND_SERVICE% --region %AWS_REGION% >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
     echo ⚠️  Service not found, skipping
     goto :eof
 )
-aws ecs update-service --cluster %ECS_CLUSTER% --service frontend --force-new-deployment --region %AWS_REGION% >nul
+aws ecs update-service --cluster %ECS_CLUSTER% --service %FRONTEND_SERVICE% --force-new-deployment --region %AWS_REGION% >nul
 echo ✅ Deployed
 echo 🌐 http://shopease-ALB-sKp3hMBLPetR-1497330103.us-east-1.elb.amazonaws.com
 goto :eof
