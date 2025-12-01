@@ -16,7 +16,7 @@ CORS(app)  # Enable CORS for all routes
 # ════════════════════════════════════════════════════════════════════════════════
 
 # Get database credentials from environment variables with RDS defaults
-DB_HOST = os.getenv('DB_HOST', 'shopease-mysql-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
+DB_HOST = os.getenv('DB_HOST', 'shopease-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'ChangeMe123!')

@@ -392,6 +392,12 @@ Resources:
               Value: !Ref DBName
             - Name: PORT
               Value: "5000"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/product-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
 
   ProductService:
     Type: AWS::ECS::Service
@@ -440,6 +446,13 @@ Resources:
               Value: !Ref DBName
             - Name: PORT
               Value: "5001"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/user-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
 
   UserService:
     Type: AWS::ECS::Service
@@ -488,6 +501,13 @@ Resources:
               Value: !Ref DBName
             - Name: PORT
               Value: "5002"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/order-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
 
   OrderService:
     Type: AWS::ECS::Service
@@ -536,6 +556,13 @@ Resources:
               Value: !Ref DBName
             - Name: PORT
               Value: "5003"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/payment-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
 
   PaymentService:
     Type: AWS::ECS::Service
@@ -584,6 +611,13 @@ Resources:
               Value: !Ref DBName
             - Name: PORT
               Value: "5005"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/notification-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
 
   NotificationService:
     Type: AWS::ECS::Service
@@ -622,6 +656,13 @@ Resources:
           Environment:
             - Name: API_BASE_URL
               Value: !Sub "http://${LoadBalancer.DNSName}"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/frontend
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
 
   FrontendService:
     Type: AWS::ECS::Service
