@@ -347,7 +347,7 @@ async function checkout() {
             shipping_address: shippingAddress
         };
         
-        const orderResponse = await fetch(`${API_SERVICES.order}/orders`, {
+        const orderResponse = await fetch(`${API_SERVICES.order}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
@@ -398,7 +398,7 @@ async function processPayment(event) {
     }
     
     try {
-        const paymentResponse = await fetch(`${API_SERVICES.payment}/payments`, {
+        const paymentResponse = await fetch(`${API_SERVICES.payment}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(paymentData)
@@ -439,7 +439,7 @@ async function fetchUserOrders() {
     if (!currentUser) return;
     
     try {
-        const response = await fetch(`${API_SERVICES.order}/orders/user/${currentUser.id}`);
+        const response = await fetch(`${API_SERVICES.order}/user/${currentUser.id}`);
         const orders = await response.json();
         
         displayUserOrders(orders);
@@ -510,7 +510,7 @@ async function loadAdminData() {
 
 async function loadAllOrders() {
     try {
-        const response = await fetch(`${API_SERVICES.order}/orders`);
+        const response = await fetch(`${API_SERVICES.order}`);
         const data = await response.json();
         const orders = data.orders || data;
         
@@ -535,7 +535,7 @@ async function loadAllOrders() {
 
 async function loadAllUsers() {
     try {
-        const response = await fetch(`${API_SERVICES.user}/users`);
+        const response = await fetch(`${API_SERVICES.user}`);
         const users = await response.json();
         
         const usersList = document.getElementById('admin-users-list');
@@ -554,7 +554,7 @@ async function loadAllUsers() {
 
 async function loadPaymentStats() {
     try {
-        const response = await fetch(`${API_SERVICES.payment}/payments/stats`);
+        const response = await fetch(`${API_SERVICES.payment}/stats`);
         const stats = await response.json();
         
         const statsContainer = document.getElementById('admin-payments-stats');
