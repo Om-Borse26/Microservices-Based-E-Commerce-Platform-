@@ -86,7 +86,7 @@ class User(db.Model):
 
 def send_notification(user_id, notification_type, message, email, username):
     try:
-        response = requests.post(f'{NOTIFICATION_SERVICE_URL}/notifications',     
+        response = requests.post(f'{NOTIFICATION_SERVICE_URL}',     
             json={
                 'user_id': user_id,
                 'type': notification_type,
