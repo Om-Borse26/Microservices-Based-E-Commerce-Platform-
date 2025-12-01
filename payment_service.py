@@ -155,7 +155,7 @@ def send_payment_notification(user_id, payment_data, order_id):
             notification_data['email'] = user_email
         
         response = requests.post(
-            f'{NOTIFICATION_SERVICE_URL}/notifications',
+            f'{NOTIFICATION_SERVICE_URL}',
             headers={'Content-Type': 'application/json'},
             json=notification_data,
             timeout=10

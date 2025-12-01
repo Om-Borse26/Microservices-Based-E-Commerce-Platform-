@@ -6,12 +6,14 @@ let authToken = null;
 let currentOrderId = null;
 
 // API Configuration
+const ALB_BASE_URL = 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com';
+
 const API_SERVICES = {
-    product: 'http://localhost:5000',
-    user: 'http://localhost:5001',
-    order: 'http://localhost:5002',
-    payment: 'http://localhost:5003',
-    notification: 'http://localhost:5005'
+    product: `${ALB_BASE_URL}/api/products`,
+    user: `${ALB_BASE_URL}/api/users`,
+    order: `${ALB_BASE_URL}/api/orders`,
+    payment: `${ALB_BASE_URL}/api/payments`,
+    notification: `${ALB_BASE_URL}/api/notifications`
 };
 
 // Initialize the application
@@ -166,7 +168,7 @@ async function fetchProducts() {
     if (errorElement) errorElement.style.display = 'none';
     
     try {
-        const response = await fetch(`${API_SERVICES.product}/products`);
+        const response = await fetch(`${API_SERVICES.product}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
         const products = await response.json();
@@ -594,7 +596,7 @@ async function addProduct(event) {
     };
     
     try {
-        const response = await fetch(`${API_SERVICES.product}/products`, {
+        const response = await fetch(`${API_SERVICES.product}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(productData)
