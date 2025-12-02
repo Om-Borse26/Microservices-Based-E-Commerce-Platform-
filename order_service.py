@@ -100,7 +100,7 @@ class OrderItem(db.Model):
 # ════════════════════════════════════════════════════════════════════════════════
 
 def get_product_details(product_id):
-    """Fetch product details from product service"""
+    """Fetching product details from product service"""
     try:
         response = requests.get(f'{PRODUCT_SERVICE_URL}/{product_id}', timeout=5)
         if response.status_code == 200:

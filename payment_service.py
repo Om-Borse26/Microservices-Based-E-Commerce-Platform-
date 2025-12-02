@@ -126,7 +126,7 @@ def update_order_status(order_id, status):
         return False
 
 def send_payment_notification(user_id, payment_data, order_id):
-    """Send payment notification via notification service"""
+    """Sending payment notification via notification service"""
     try:
         # Try to get user details from user service
         user_email = None

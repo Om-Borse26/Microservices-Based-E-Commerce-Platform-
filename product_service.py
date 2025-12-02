@@ -8,6 +8,7 @@ import sys
 app = Flask(__name__)
 CORS(app)
 
+# DB details
 DB_HOST = os.getenv('DB_HOST', 'shopease-db.cmni2wmcozyh.us-east-1.rds.amazonaws.com')
 DB_PORT = os.getenv('DB_PORT', '3306')
 DB_USER = os.getenv('DB_USER', 'admin')
