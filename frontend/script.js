@@ -418,7 +418,6 @@ async function processPayment(event) {
             
             // Show order confirmation
             showSection('orders');
-            fetchUserOrders();
             
         } else {
             showNotification('Payment failed. Please try again.', 'error');

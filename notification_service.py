@@ -30,10 +30,7 @@ if _EMAIL_CONFIG:
     SMTP_PORT = int(os.getenv('SMTP_PORT', str(_EMAIL_CONFIG.get('SMTP_PORT', 587))))
     EMAIL_USER = os.getenv('EMAIL_USER', _EMAIL_CONFIG.get('EMAIL_USER', 'your-email@gmail.com'))
     EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', _EMAIL_CONFIG.get('EMAIL_PASSWORD', ''))
-    ENABLE_REAL_EMAIL_SENDING = os.getenv(
-        'ENABLE_REAL_EMAIL_SENDING',
-        str(_EMAIL_CONFIG.get('ENABLE_REAL_EMAIL_SENDING', False))
-    ).lower() == 'true'
+    ENABLE_REAL_EMAIL_SENDING = os.getenv('ENABLE_REAL_EMAIL_SENDING', 'False').lower() == 'true'
     FROM_NAME = os.getenv('FROM_NAME', _EMAIL_CONFIG.get('FROM_NAME', 'ShopEase E-Commerce'))
 else:
     SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')

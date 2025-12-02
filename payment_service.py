@@ -115,7 +115,7 @@ def update_order_status(order_id, status):
     """Update order status in order service"""
     try:
         response = requests.put(
-            f'{ORDER_SERVICE_URL}/orders/{order_id}/status',
+            f'{ORDER_SERVICE_URL}/{order_id}/status',
             headers={'Content-Type': 'application/json'},
             json={'status': status},
             timeout=5
