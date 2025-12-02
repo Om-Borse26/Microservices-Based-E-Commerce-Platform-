@@ -133,7 +133,7 @@ def send_payment_notification(user_id, payment_data, order_id):
         user_name = "Customer"
         
         try:
-            user_response = requests.get(f'{USER_SERVICE_URL}/users/{user_id}', timeout=5)
+            user_response = requests.get(f'{USER_SERVICE_URL}/{user_id}', timeout=5)
             if user_response.status_code == 200:
                 user_data = user_response.json()
                 user_email = user_data.get('email')
