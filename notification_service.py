@@ -40,7 +40,7 @@ else:
     ENABLE_REAL_EMAIL_SENDING = os.getenv('ENABLE_REAL_EMAIL_SENDING', 'False').lower() == 'true'
     FROM_NAME = os.getenv('FROM_NAME', 'ShopEase E-Commerce')
     
-print(f"ENABLE_REAL_EMAIL_SENDING STATUS: {ENABLE_REAL_EMAIL_SENDING}")
+print(f"ENABLE_REAL_EMAIL_SENDING: {ENABLE_REAL_EMAIL_SENDING}")
 print(f"EMAIL_USER: {EMAIL_USER}")
 
 app = Flask(__name__)
