@@ -117,6 +117,23 @@ def validate_stock(product_id, quantity):
         return True
     return False
 
+def send_order_notification(user_id, order_data):
+    notification_data = {
+        'user_id': user_id,
+        'type': 'order',
+        'category': 'order_confirmation',
+        'title': f'Order Confirmation - Order #{order_data["id"]}',
+        'message': f"Your order #{order_data['id']} has been placed successfully.",
+        'delivery_method': 'email',
+        'status': 'pending'
+    }
+    requests.post(
+        os.getenv('NOTIFICATION_SERVICE_URL', 'http://shopease-alb-1528125855.us-east-1.elb.amazonaws.com/api/notifications'),
+        headers={'Content-Type': 'application/json'},
+        json=notification_data,
+        timeout=10
+    )
+
 # ════════════════════════════════════════════════════════════════════════════════
 # API ROUTES
 # ════════════════════════════════════════════════════════════════════════════════

@@ -10,6 +10,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import importlib
 import importlib.util
+from dotenv import load_dotenv; load_dotenv() 
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # EMAIL CONFIGURATION
